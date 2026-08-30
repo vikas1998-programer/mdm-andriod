@@ -265,7 +265,7 @@ class DpmPolicyManager(private val context: Context) {
                 val pm = context.packageManager
                 val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
                 
-                // Query both installed applications and all launcher activities across the system
+                // Query all user-launchable applications across the device
                 val launcherApps = try {
                     pm.queryIntentActivities(
                         android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER),
@@ -273,24 +273,16 @@ class DpmPolicyManager(private val context: Context) {
                     ).mapNotNull { it.activityInfo?.packageName }
                 } catch (_: Exception) { emptyList() }
 
-                val installedApps = try {
-                    pm.getInstalledApplications(android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES or android.content.pm.PackageManager.MATCH_DISABLED_COMPONENTS)
-                        .map { it.packageName }
-                } catch (_: Exception) {
-                    pm.getInstalledApplications(0).map { it.packageName }
-                }
-
-                val allDiscoveredPackages = (installedApps + launcherApps).toSet()
-
                 val allowedPackages = policy.applications
                     .filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED") }
                     .map { it.packageName }
                     .toSet()
 
-                // Essential system infrastructure that must never be suspended to avoid bricking OS
-                val criticalPackages = setOf(
+                // Critical packages and OS services that must NEVER be suspended/hidden
+                val protectedPackages = setOf(
                     "android",
                     "com.android.systemui",
+                    "com.android.settings",
                     "com.google.android.packageinstaller",
                     "com.android.packageinstaller",
                     "com.google.android.permissioncontroller",
@@ -309,17 +301,20 @@ class DpmPolicyManager(private val context: Context) {
                     "com.samsung.android.biometrics",
                     "com.samsung.android.knox.containercore",
                     "com.samsung.klmsagent",
+                    "com.samsung.android.smartface",
+                    "com.sec.android.app.launcher",
                     context.packageName
                 )
 
-                val effectiveAllowed = (allowedPackages + policy.allowedKioskPackages).toSet()
+                val effectiveAllowed = (allowedPackages + policy.allowedKioskPackages + protectedPackages).toSet()
+
+                // Only govern launchable apps (never touch headless system services / Zygote overlays)
+                val governablePackages = launcherApps.toSet() - protectedPackages
 
                 var allowedCount = 0
                 var blockedCount = 0
 
-                for (pkg in allDiscoveredPackages) {
-                    if (criticalPackages.contains(pkg)) continue
-
+                for (pkg in governablePackages) {
                     val isWhitelisted = effectiveAllowed.contains(pkg)
 
                     try {
@@ -329,7 +324,7 @@ class DpmPolicyManager(private val context: Context) {
                             try { dpm.setPackagesSuspended(admin, arrayOf(pkg), false) } catch (_: Exception) {}
                             allowedCount++
                         } else {
-                            // Default-Block: Hide and Suspend all unmanaged apps (Alarm, Clock, Chrome, Settings, etc.)
+                            // Default-Block: Suspend and Hide unauthorized user apps
                             try { dpm.setApplicationHidden(admin, pkg, true) } catch (_: Exception) {}
                             try { dpm.setPackagesSuspended(admin, arrayOf(pkg), true) } catch (_: Exception) {}
                             try { am?.killBackgroundProcesses(pkg) } catch (_: Exception) {}

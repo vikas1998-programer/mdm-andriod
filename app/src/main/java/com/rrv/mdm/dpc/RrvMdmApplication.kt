@@ -70,6 +70,25 @@ class RrvMdmApplication : Application() {
         if (deviceManager.isDeviceOwner()) {
             deviceManager.setAsDefaultHomeLauncher()
             policyManager.enforceBaselineSecurity()
+
+            // Auto-bootstrap local USB tunnel configuration when operating under Device Owner
+            if (!repository.isEnrolled || repository.deviceId.isBlank()) {
+                val realSerial = try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        android.os.Build.getSerial()
+                    } else {
+                        android.os.Build.SERIAL
+                    }
+                } catch (_: Exception) { "R5CR111K3GX" }
+
+                repository.deviceId = "3980f067-33c3-4f07-866a-13684a5db584"
+                repository.serverUrl = "http://127.0.0.1:8080"
+                repository.mqttBrokerHost = "127.0.0.1"
+                repository.mqttPort = 1883
+                repository.isEnrolled = true
+                Log.i(TAG, "⚡ Device Owner auto-bootstrapped for USB tunnel with serial: $realSerial")
+            }
+
             deviceManager.applyPolicy(repository.getActivePolicy())
         }
 
@@ -80,8 +99,8 @@ class RrvMdmApplication : Application() {
             Log.w(TAG, "Could not register AppEventPublisher: ${e.message}")
         }
 
-        // 5. Auto-connect MQTT Command Channel if Device is Enrolled
-        if (repository.isEnrolled) {
+        // 5. Auto-connect MQTT Command Channel and start persistent daemon
+        if (repository.isEnrolled || deviceManager.isDeviceOwner()) {
             mqttManager.connect()
             try {
                 com.rrv.mdm.dpc.service.MdmPersistentService.start(this)

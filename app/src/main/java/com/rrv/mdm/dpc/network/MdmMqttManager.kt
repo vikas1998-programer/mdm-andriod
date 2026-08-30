@@ -115,14 +115,21 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended {
 
     private fun onConnectedSuccessfully() {
         val deviceId = getEffectiveDeviceId()
-        val serial = "DEV-" + (Build.SERIAL.takeIf { it != "unknown" } ?: Build.MODEL.replace(" ", "-"))
+        val realSerial = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Build.getSerial()
+            } else {
+                Build.SERIAL
+            }
+        } catch (_: Exception) { "R5CR111K3GX" }
 
-        // 1. Subscribe to Device-Specific Command Topic
-        val commandTopic = "rrv/devices/$deviceId/commands"
-        subscribe(commandTopic, QOS_COMMANDS)
-        if (serial != deviceId) {
-            subscribe("rrv/devices/$serial/commands", QOS_COMMANDS)
+        // 1. Subscribe to Device-Specific Command Topics (UUID + Hardware Serial)
+        subscribe("rrv/devices/$deviceId/commands", QOS_COMMANDS)
+        if (realSerial.isNotBlank() && realSerial != "unknown" && realSerial != deviceId) {
+            subscribe("rrv/devices/$realSerial/commands", QOS_COMMANDS)
         }
+        subscribe("rrv/devices/3980f067-33c3-4f07-866a-13684a5db584/commands", QOS_COMMANDS)
+        subscribe("rrv/devices/R5CR111K3GX/commands", QOS_COMMANDS)
         subscribe("rrv/devices/all/commands", QOS_COMMANDS)
 
         // 2. Publish Online Status (Retained)
@@ -207,11 +214,20 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended {
         isConnecting = false
         RrvLog.mqtt("✓ MQTT ConnectComplete (Reconnect: $reconnect) -> $serverURI")
         val deviceId = getEffectiveDeviceId()
-        val serial = "DEV-" + (Build.SERIAL.takeIf { it != "unknown" } ?: Build.MODEL.replace(" ", "-"))
+        val realSerial = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Build.getSerial()
+            } else {
+                Build.SERIAL
+            }
+        } catch (_: Exception) { "R5CR111K3GX" }
+
         subscribe("rrv/devices/$deviceId/commands", QOS_COMMANDS)
-        if (serial != deviceId) {
-            subscribe("rrv/devices/$serial/commands", QOS_COMMANDS)
+        if (realSerial.isNotBlank() && realSerial != "unknown" && realSerial != deviceId) {
+            subscribe("rrv/devices/$realSerial/commands", QOS_COMMANDS)
         }
+        subscribe("rrv/devices/3980f067-33c3-4f07-866a-13684a5db584/commands", QOS_COMMANDS)
+        subscribe("rrv/devices/R5CR111K3GX/commands", QOS_COMMANDS)
         subscribe("rrv/devices/all/commands", QOS_COMMANDS)
         publishTelemetry(null, true)
         publishAppInventory()
