@@ -258,7 +258,8 @@ class DeviceManagementManager(private val context: Context) {
                             val info = pm.getApplicationInfo(pkg, 0)
                             pm.getApplicationLabel(info).toString()
                         } catch (_: Exception) {
-                            policy.applications.find { it.packageName == pkg }?.title ?: pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+                            policy.applications.find { it.packageName == pkg }?.title?.takeIf { it.isNotBlank() && it != pkg }
+                                ?: pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
                         }
                         val isInstalled = try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
                         ApplicationInfo(

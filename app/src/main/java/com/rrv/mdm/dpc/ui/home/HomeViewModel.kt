@@ -90,10 +90,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val appsToSeed = if (policyApps.isNotEmpty()) {
                 policyApps.map { appPolicy ->
                     val isInstalled = try { pm.getPackageInfo(appPolicy.packageName, 0); true } catch (_: Exception) { false }
-                    val label = if (appPolicy.title.isNotBlank()) appPolicy.title else try {
-                        val info = pm.getApplicationInfo(appPolicy.packageName, 0)
-                        pm.getApplicationLabel(info).toString()
-                    } catch (_: Exception) { appPolicy.packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() } }
+                    val label = if (appPolicy.title.isNotBlank() && appPolicy.title != appPolicy.packageName) {
+                        appPolicy.title
+                    } else {
+                        try {
+                            val info = pm.getApplicationInfo(appPolicy.packageName, 0)
+                            pm.getApplicationLabel(info).toString()
+                        } catch (_: Exception) {
+                            if (appPolicy.title.isNotBlank()) appPolicy.title else appPolicy.packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+                        }
+                    }
 
                     ApplicationInfo(
                         packageName = appPolicy.packageName,
