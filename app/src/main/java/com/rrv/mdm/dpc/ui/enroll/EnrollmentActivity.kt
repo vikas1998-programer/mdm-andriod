@@ -23,10 +23,11 @@ class EnrollmentActivity : AppCompatActivity() {
 
         val app = application as RrvMdmApplication
 
-        if (binding.etServerUrl.text.isNullOrBlank()) {
-            binding.etServerUrl.setText("http://127.0.0.1:8080")
-        }
-        binding.etEnrollToken.setText("RRV-DEMO-2026")
+        val passedUrl = intent.getStringExtra("EXTRA_SERVER_URL")
+        val passedToken = intent.getStringExtra("EXTRA_ENROLLMENT_TOKEN")
+
+        binding.etServerUrl.setText(passedUrl ?: "http://127.0.0.1:8080")
+        binding.etEnrollToken.setText(passedToken ?: "rrv-tok-76e0b96c70cd409e")
 
         binding.btnEnrollSubmit.setOnClickListener {
             val serverUrl = binding.etServerUrl.text.toString().trim()
@@ -52,15 +53,15 @@ class EnrollmentActivity : AppCompatActivity() {
                         // Start persistent foreground service (policy watchdog + MQTT guardian)
                         com.rrv.mdm.dpc.service.MdmPersistentService.start(this)
 
-                        // Apply baseline security restrictions immediately if Device Owner
-                        if (app.policyManager.isDeviceOwner()) {
+                        // Apply baseline security restrictions and default home launcher immediately if Device Owner
+                        if (app.deviceManager.isDeviceOwner()) {
+                            app.deviceManager.setAsDefaultHomeLauncher()
                             app.policyManager.enforceBaselineSecurity()
-                            // Apply any saved policy
                             val policy = app.repository.getActivePolicy()
-                            app.policyManager.applyPolicy(policy)
+                            app.deviceManager.applyPolicy(policy)
                         }
 
-                        val homeIntent = Intent(this, KioskLauncherActivity::class.java).apply {
+                        val homeIntent = Intent(this, com.rrv.mdm.dpc.ui.home.RrvMdmHomeActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
                         startActivity(homeIntent)

@@ -220,4 +220,34 @@ class MdmApiClient(private val context: Context) {
             }
         })
     }
+
+    fun sendHeartbeat(deviceId: String, batteryLevel: Int, isCharging: Boolean) {
+        if (deviceId.isBlank()) return
+        val serverUrl = repository.serverUrl.trimEnd('/')
+        val jwt = repository.deviceJwt
+        val endpoint = "$serverUrl/api/v1/devices/$deviceId/heartbeat"
+
+        val payload = mapOf(
+            "batteryLevel" to batteryLevel,
+            "isCharging" to isCharging,
+            "networkType" to "WIFI",
+            "lastKnownIp" to "127.0.0.1",
+            "deviceTimestamp" to System.currentTimeMillis()
+        )
+        val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url(endpoint)
+            .post(body)
+            .apply { if (jwt.isNotBlank()) header("Authorization", "Bearer $jwt") }
+            .build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w(TAG, "Heartbeat REST fallback failed: ${e.message}")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.close()
+            }
+        })
+    }
 }
