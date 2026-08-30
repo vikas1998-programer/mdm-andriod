@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/layoutKioskRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_kiosk_gradient"
+    android:fitsSystemWindows="true">
+
+    <!-- Central Watermark RRv MDM Logo & Branding (Only element on Home Screen) -->
+    <LinearLayout
+        android:id="@+id/layoutWatermark"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="24dp">
+
+        <ImageView
+            android:id="@+id/ivWatermarkLogo"
+            android:layout_width="190dp"
+            android:layout_height="190dp"
+            android:src="@drawable/ic_rrv_mdm_watermark"
+            android:contentDescription="RRv MDM Watermark"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/tvWatermarkTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="RRv MDM"
+            android:textColor="#3838BDF8"
+            android:textSize="26sp"
+            android:fontFamily="sans-serif-black"
+            android:letterSpacing="0.28"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:id="@+id/tvWatermarkSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SECURED ENTERPRISE WORKSPACE"
+            android:textColor="#2294A3B8"
+            android:textSize="10sp"
+            android:fontFamily="sans-serif-medium"
+            android:letterSpacing="0.32"
+            android:layout_marginTop="6dp" />
+
+    </LinearLayout>
+
+    <!-- Clean Grid of Authorized Applications (Overlaid when apps are provisioned) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvKioskApps"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="28dp"
+        android:paddingBottom="28dp"
+        android:visibility="gone"
+        tools:listitem="@layout/item_kiosk_app" />
+
+</RelativeLayout>

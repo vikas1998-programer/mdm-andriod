@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="220dp"
+    android:height="220dp"
+    android:viewportWidth="220"
+    android:viewportHeight="220">
+
+    <!-- Ambient Glow Layer behind Shield -->
+    <path
+        android:pathData="M110,18 L190,56 C190,146 110,198 110,198 C110,198 30,146 30,56 L110,18 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="110"
+                android:startY="18"
+                android:endX="110"
+                android:endY="198"
+                android:type="linear">
+                <item android:color="#1A38BDF8" android:offset="0.0"/>
+                <item android:color="#082563EB" android:offset="0.6"/>
+                <item android:color="#02060911" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer Translucent Cybernetic Shield Stroke -->
+    <path
+        android:pathData="M110,22 L186,58 C186,142 110,192 110,192 C110,192 34,142 34,58 L110,22 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#3338BDF8"/>
+
+    <!-- Inner Shield Inset Geometry -->
+    <path
+        android:pathData="M110,38 L168,66 C168,132 110,172 110,172 C110,172 52,132 52,66 L110,38 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#2200E5FF"/>
+
+    <!-- Zero-Trust Orbit Nodes -->
+    <!-- Top Central Node -->
+    <path
+        android:pathData="M110,20 A5,5 0 1,1 109.9,20 Z"
+        android:fillColor="#4D38BDF8"/>
+
+    <!-- Left Node -->
+    <path
+        android:pathData="M34,58 A4,4 0 1,1 33.9,58 Z"
+        android:fillColor="#3360A5FA"/>
+
+    <!-- Right Node -->
+    <path
+        android:pathData="M186,58 A4,4 0 1,1 185.9,58 Z"
+        android:fillColor="#3360A5FA"/>
+
+    <!-- Bottom Shield Anchor Dot -->
+    <path
+        android:pathData="M110,192 A4,4 0 1,1 109.9,192 Z"
+        android:fillColor="#3338BDF8"/>
+
+    <!-- Central Device Silhouette Frame -->
+    <path
+        android:pathData="M84,68 L136,68 A10,10 0 0,1 146,78 L146,146 A10,10 0 0,1 136,156 L84,156 A10,10 0 0,1 74,146 L74,78 A10,10 0 0,1 84,68 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#4038BDF8">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="74"
+                android:startY="68"
+                android:endX="146"
+                android:endY="156"
+                android:type="linear">
+                <item android:color="#1F38BDF8" android:offset="0.0"/>
+                <item android:color="#122563EB" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Stylized "RRv" Monogram Graphic -->
+    <!-- First 'R' -->
+    <path
+        android:pathData="M86,88 L102,88 C107,88 111,91 111,96 C111,100 107,103 102,103 L92,103 L92,118 L86,118 Z M92,93 L92,98 L101,98 C103.5,98 105,97.2 105,96 C105,94.8 103.5,93 101,93 Z M100,103 L111,118 L104,118 L94,103 Z"
+        android:fillColor="#5538BDF8"/>
+
+    <!-- Second 'R' Inset Overlay -->
+    <path
+        android:pathData="M100,98 L116,98 C121,98 125,101 125,106 C125,110 121,113 116,113 L106,113 L106,128 L100,128 Z M106,103 L106,108 L115,108 C117.5,108 119,107.2 119,106 C119,104.8 117.5,103 115,103 Z M114,113 L125,128 L118,128 L108,113 Z"
+        android:fillColor="#4D60A5FA"/>
+
+    <!-- 'v' Micro Accent -->
+    <path
+        android:pathData="M127,112 L131.5,124 L136,112 L140,112 L133.5,128 L129.5,128 L123,112 Z"
+        android:fillColor="#5500E5FF"/>
+
+    <!-- Bottom Indicator Pill Bar -->
+    <path
+        android:pathData="M102,148 L118,148"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeColor="#4038BDF8"/>
+
+    <!-- Top Camera Notch Dot -->
+    <path
+        android:pathData="M110,74 A1.8,1.8 0 1,1 109.9,74 Z"
+        android:fillColor="#4038BDF8"/>
+
+</vector>

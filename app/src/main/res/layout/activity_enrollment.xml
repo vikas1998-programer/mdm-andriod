@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_space"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Brand Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginTop="32dp"
+            android:layout_marginBottom="32dp">
+
+            <ImageView
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:src="@android:drawable/ic_lock_lock"
+                app:tint="@color/cyan_glow" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="RRV MDM"
+                android:textColor="@color/text_main"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:layout_marginTop="12dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/enroll_subtitle"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <!-- Enrollment Form Card -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/bg_surface"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ENTERPRISE SERVER ENDPOINT"
+                android:textColor="@color/cyan_glow"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
+
+            <EditText
+                android:id="@+id/etServerUrl"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="@string/enroll_server_url_hint"
+                android:textColorHint="@color/text_muted"
+                android:textColor="@color/text_main"
+                android:textSize="13sp"
+                android:inputType="textUri"
+                android:background="@color/bg_card"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ORGANIZATION ENROLLMENT TOKEN"
+                android:textColor="@color/cyan_glow"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05" />
+
+            <EditText
+                android:id="@+id/etEnrollToken"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:hint="e.g. RRV-TOK-ORG-9921"
+                android:textColorHint="@color/text_muted"
+                android:textColor="@color/text_main"
+                android:textSize="13sp"
+                android:inputType="textCapCharacters"
+                android:background="@color/bg_card"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginTop="6dp"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Status Banner -->
+            <TextView
+                android:id="@+id/tvEnrollStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ready for Zero-Touch / QR provisioning."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp"
+                android:gravity="center"
+                android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/btnEnrollSubmit"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="@string/enroll_submit_btn"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:backgroundTint="@color/blue_primary" />
+
+        </LinearLayout>
+
+        <!-- Footer -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="RRV Software Pvt Ltd • FIPS 140-3 Hardware Attested"
+            android:textColor="@color/text_muted"
+            android:textSize="10sp"
+            android:gravity="center"
+            android:layout_marginTop="32dp" />
+
+    </LinearLayout>
+</ScrollView>

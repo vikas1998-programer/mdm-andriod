@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Enterprise DPC & System Telemetry Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:name=".RrvMdmApplication"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_mdm_launcher"
+        android:roundIcon="@drawable/ic_mdm_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RrvMdmDpc"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- ======================================================== -->
+        <!-- 1. Device Admin Receiver (Android Enterprise Core)       -->
+        <!-- ======================================================== -->
+        <receiver
+            android:name=".receiver.RrvDeviceAdminReceiver"
+            android:description="@string/device_admin_description"
+            android:label="@string/device_admin_label"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_sample" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+                <action android:name="android.app.action.LOCK_TASK_ENTERING" />
+                <action android:name="android.app.action.LOCK_TASK_EXITING" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Silent PackageInstaller Result Receiver -->
+        <receiver
+            android:name=".receiver.SilentInstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.rrv.mdm.dpc.SILENT_INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot Receiver for MQTT Auto-Reconnect & Periodic Sync -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ======================================================== -->
+        <!-- 2. Foreground Location & Geofence Tracker Service       -->
+        <!-- ======================================================== -->
+        <service
+            android:name=".geofence.LocationTrackerService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- ======================================================== -->
+        <!-- 3. MDM Persistent Agent Service (Policy Watchdog)        -->
+        <!-- ======================================================== -->
+        <service
+            android:name=".service.MdmPersistentService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+
+        <!-- ======================================================== -->
+        <!-- 3. Provisioning & Enrollment Activity                     -->
+        <!-- ======================================================== -->
+        <activity
+            android:name=".ui.enroll.EnrollmentActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Zero-Touch / QR Code Provisioning Extras Intent Filter -->
+            <intent-filter>
+                <action android:name="android.app.action.PROVISION_MANAGED_PROFILE" />
+                <action android:name="android.app.action.PROVISION_MANAGED_DEVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- ======================================================== -->
+        <!-- 4. RRV MDM Corporate Managed Home Launcher (Contoso UI) -->
+        <!-- ======================================================== -->
+        <activity
+            android:name=".ui.home.RrvMdmHomeActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true"
+            android:stateNotNeeded="true"
+            android:excludeFromRecents="false"
+            android:resumeWhilePausing="true"
+            android:windowSoftInputMode="adjustPan"
+            android:theme="@style/Theme.RrvMdmDpc">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ======================================================== -->
+        <!-- 5. Secondary Managed Device Activities                    -->
+        <!-- ======================================================== -->
+        <activity
+            android:name=".ui.device.DeviceStatusActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.apps.AppDetailsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.messages.AdminMessagesActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.commands.CommandActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.settings.ManagedSettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.about.AboutMdmActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.hub.MdmClientHubActivity"
+            android:exported="true"
+            android:launchMode="singleTask" />
+
+        <activity
+            android:name=".ui.kiosk.KioskLauncherActivity"
+            android:exported="false" />
+
+        <!-- ======================================================== -->
+        <!-- 6. Admin Diagnostic & IT Bypass Studio                   -->
+        <!-- ======================================================== -->
+        <activity
+            android:name=".ui.admin.AdminDiagnosticActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+    </application>
+</manifest>

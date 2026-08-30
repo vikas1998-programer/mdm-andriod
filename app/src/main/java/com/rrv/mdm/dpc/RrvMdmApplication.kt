@@ -1,0 +1,105 @@
+package com.rrv.mdm.dpc
+
+import android.app.Application
+import android.util.Log
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.rrv.mdm.dpc.data.database.RrvMdmDatabase
+import com.rrv.mdm.dpc.data.repository.MdmRepository
+import com.rrv.mdm.dpc.data.repository.MdmRepositoryImpl
+import com.rrv.mdm.dpc.domain.usecase.*
+import com.rrv.mdm.dpc.mdm.command.CommandProcessor
+import com.rrv.mdm.dpc.mdm.device.DeviceManagementManager
+import com.rrv.mdm.dpc.network.MdmApiClient
+import com.rrv.mdm.dpc.network.MdmMqttManager
+import com.rrv.mdm.dpc.policy.DpmPolicyManager
+import com.rrv.mdm.dpc.policy.LockTaskController
+import com.rrv.mdm.dpc.worker.TelemetrySyncWorker
+import java.util.concurrent.TimeUnit
+
+class RrvMdmApplication : Application() {
+
+    companion object {
+        private const val TAG = "RrvMdmApplication"
+    }
+
+    lateinit var repository: MdmRepository
+    lateinit var database: RrvMdmDatabase
+    lateinit var repositoryImpl: MdmRepositoryImpl
+    lateinit var deviceManager: DeviceManagementManager
+    lateinit var commandProcessor: CommandProcessor
+    lateinit var policyManager: DpmPolicyManager
+    lateinit var lockTaskController: LockTaskController
+    lateinit var mqttManager: MdmMqttManager
+    lateinit var apiClient: MdmApiClient
+
+    // Use Cases
+    lateinit var getManagedAppsUseCase: GetManagedAppsUseCase
+    lateinit var getDeviceStatusUseCase: GetDeviceStatusUseCase
+    lateinit var getAdminMessagesUseCase: GetAdminMessagesUseCase
+    lateinit var getRecentCommandsUseCase: GetRecentCommandsUseCase
+    lateinit var processCommandUseCase: ProcessCommandUseCase
+    lateinit var launchAppUseCase: LaunchAppUseCase
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.i(TAG, "🚀 Initializing RRV MDM Enterprise Client Subsystems...")
+
+        // 1. Initialize Database and Repositories
+        repository = MdmRepository(this)
+        database = RrvMdmDatabase.getInstance(this)
+        repositoryImpl = MdmRepositoryImpl(this, database, repository)
+        deviceManager = DeviceManagementManager(this)
+        commandProcessor = CommandProcessor(this)
+
+        policyManager = DpmPolicyManager(this)
+        lockTaskController = LockTaskController(this)
+        mqttManager = MdmMqttManager(this)
+        apiClient = MdmApiClient(this)
+
+        // 2. Initialize Use Cases
+        getManagedAppsUseCase = GetManagedAppsUseCase(repositoryImpl)
+        getDeviceStatusUseCase = GetDeviceStatusUseCase(repositoryImpl)
+        getAdminMessagesUseCase = GetAdminMessagesUseCase(repositoryImpl)
+        getRecentCommandsUseCase = GetRecentCommandsUseCase(repositoryImpl)
+        processCommandUseCase = ProcessCommandUseCase(commandProcessor)
+        launchAppUseCase = LaunchAppUseCase(this)
+
+        // 3. Ensure Home Launcher binding and baseline security if Device Owner
+        if (deviceManager.isDeviceOwner()) {
+            deviceManager.setAsDefaultHomeLauncher()
+            policyManager.enforceBaselineSecurity()
+        }
+
+        // 4. Auto-connect MQTT Command Channel if Device is Enrolled
+        if (repository.isEnrolled) {
+            mqttManager.connect()
+            try {
+                com.rrv.mdm.dpc.service.MdmPersistentService.start(this)
+                val locationIntent = android.content.Intent(this, com.rrv.mdm.dpc.geofence.LocationTrackerService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    startForegroundService(locationIntent)
+                } else {
+                    startService(locationIntent)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not start persistent background services: ${e.message}")
+            }
+        }
+
+        // 5. Schedule WorkManager Periodic Telemetry Worker (every 15 mins)
+        schedulePeriodicHeartbeat()
+    }
+
+    private fun schedulePeriodicHeartbeat() {
+        val workRequest = PeriodicWorkRequestBuilder<TelemetrySyncWorker>(15, TimeUnit.MINUTES)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "rrv_mdm_telemetry_heartbeat",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
+    }
+}

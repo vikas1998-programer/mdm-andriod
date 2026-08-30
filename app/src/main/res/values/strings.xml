@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">RRV MDM Agent</string>
+    <string name="device_admin_label">RRV Enterprise Device Policy Controller</string>
+    <string name="device_admin_description">Enforces hardware zero-trust policies, spatial geofences, and secure enterprise fleet management.</string>
+
+    <!-- Kiosk Strings -->
+    <string name="kiosk_header_title">RRV Enterprise Kiosk</string>
+    <string name="kiosk_header_subtitle">Secured Workspace • Hardware Attested</string>
+    <string name="kiosk_no_apps">No authorized enterprise applications provisioned.</string>
+    <string name="kiosk_admin_exit">Exit Kiosk (Admin PIN)</string>
+    <string name="kiosk_enter_pin">Enter 6-Digit Master Security PIN</string>
+
+    <!-- Enrollment Strings -->
+    <string name="enroll_title">Device Provisioning Studio</string>
+    <string name="enroll_subtitle">Zero-Touch &amp; QR Code Hardware Onboarding</string>
+    <string name="enroll_scan_qr">Scan Provisioning QR Code</string>
+    <string name="enroll_manual_btn">Manual Server Provisioning</string>
+    <string name="enroll_server_url_hint">https://mdm.rrvsoftware.com</string>
+    <string name="enroll_token_hint">Organization Enrollment Token</string>
+    <string name="enroll_submit_btn">Initiate Device Enrollment</string>
+</resources>

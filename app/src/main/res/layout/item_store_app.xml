@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginBottom="12dp"
+    android:background="@drawable/bg_app_card_dark"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- App Icon -->
+        <ImageView
+            android:id="@+id/ivStoreAppIcon"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:src="@android:drawable/sym_def_app_icon"
+            android:background="@drawable/bg_app_icon_frame"
+            android:padding="6dp"
+            android:scaleType="fitCenter" />
+
+        <!-- App Details -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="14dp"
+            android:layout_marginEnd="10dp">
+
+            <!-- Version tag & category -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tvStoreAppVersion"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="v2.4"
+                    android:textColor="#64748B"
+                    android:textSize="11sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:id="@+id/tvStoreAppSourceTag"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="● In-House APK"
+                    android:textColor="#38BDF8"
+                    android:textSize="10sp"
+                    android:layout_marginStart="6dp"
+                    android:fontFamily="sans-serif-medium" />
+            </LinearLayout>
+
+            <!-- App Title -->
+            <TextView
+                android:id="@+id/tvStoreAppTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="RRV Warehouse Scanner"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:fontFamily="sans-serif-bold"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <!-- App Subtitle -->
+            <TextView
+                android:id="@+id/tvStoreAppDescription"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Inventory &amp; asset tracking"
+                android:textColor="#94A3B8"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <!-- Launch / Status Badge -->
+        <TextView
+            android:id="@+id/tvStoreAppActionBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="🚀 Launch"
+            android:textColor="#38BDF8"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-bold"
+            android:background="@drawable/bg_btn_open"
+            android:gravity="center"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:minWidth="80dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

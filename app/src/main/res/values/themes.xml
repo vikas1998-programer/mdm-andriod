@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RrvMdmDpc" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/cyan_glow</item>
+        <item name="colorSecondary">@color/blue_primary</item>
+        <item name="android:windowBackground">@color/bg_space</item>
+        <item name="android:statusBarColor">@color/bg_space</item>
+        <item name="android:navigationBarColor">@color/bg_space</item>
+    </style>
+
+    <style name="Theme.RrvMdmDpc.Kiosk" parent="Theme.RrvMdmDpc">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>
