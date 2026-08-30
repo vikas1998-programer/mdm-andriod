@@ -1,9 +1,11 @@
 package com.rrv.mdm.dpc.network
 
 import android.content.Context
+import android.provider.Settings
 import android.util.Log
 import com.google.gson.Gson
 import com.rrv.mdm.dpc.RrvMdmApplication
+import com.rrv.mdm.dpc.data.entity.QueuedDeviceEventEntity
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -12,7 +14,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 
 /**
- * RESTful API Client for initial device enrollment and binary APK downloads.
+ * RESTful API Client for initial device enrollment, batch event uploads, and binary APK downloads.
  */
 class MdmApiClient(private val context: Context) {
 
@@ -41,6 +43,12 @@ class MdmApiClient(private val context: Context) {
             "DEV-" + android.os.Build.MODEL.replace(" ", "-") + "-" + android.os.Build.ID.take(6)
         }
 
+        val androidId = try {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+        } catch (_: Exception) {
+            null
+        }
+
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
         var imei: String? = null
         try {
@@ -52,18 +60,14 @@ class MdmApiClient(private val context: Context) {
             }
         } catch (_: Exception) {}
 
-        if (imei.isNullOrBlank()) {
-            imei = try {
-                android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-            } catch (_: Exception) {
-                serial
-            }
-        }
+        val deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
 
         val payload = mapOf(
             "enrollmentToken" to token,
             "hardware" to mapOf(
                 "serialNumber" to serial,
+                "androidId" to androidId,
+                "deviceName" to deviceName,
                 "manufacturer" to android.os.Build.MANUFACTURER,
                 "model" to android.os.Build.MODEL,
                 "imeiPrimary" to imei,
@@ -103,6 +107,16 @@ class MdmApiClient(private val context: Context) {
                         val respMap = gson.fromJson(respStr, Map::class.java)
                         val devId = respMap["deviceId"]?.toString() ?: serial
                         val jwt = respMap["jwtSessionToken"]?.toString() ?: ""
+                        val status = respMap["enrollmentStatus"]?.toString() ?: "ACTIVE"
+                        val message = respMap["approvalStatusMessage"]?.toString() ?: "Device enrolled successfully!"
+
+                        if (status == "PENDING") {
+                            repository.deviceId = devId
+                            repository.serverUrl = cleanServerUrl
+                            repository.enrollmentToken = token
+                            callback(false, "⏳ Registration Pending: $message")
+                            return
+                        }
 
                         repository.isEnrolled = true
                         repository.serverUrl = cleanServerUrl
@@ -128,6 +142,50 @@ class MdmApiClient(private val context: Context) {
                     }
                 } else {
                     callback(false, "Server rejected enrollment: HTTP ${response.code} ($respStr)")
+                }
+            }
+        })
+    }
+
+    fun uploadEvents(events: List<QueuedDeviceEventEntity>, callback: (Boolean, Int) -> Unit) {
+        val serverUrl = repository.serverUrl ?: return callback(false, 0)
+        val devId = repository.deviceId ?: return callback(false, 0)
+        val jwt = repository.deviceJwt ?: ""
+
+        val endpoint = "${serverUrl.trimEnd('/')}/api/v1/devices/$devId/events"
+        val payloadEvents = events.map {
+            mapOf(
+                "eventType" to it.eventType,
+                "severity" to it.severity,
+                "tag" to it.tag,
+                "source" to it.source,
+                "correlationId" to it.correlationId,
+                "message" to it.message,
+                "metadataJson" to it.metadataJson,
+                "timestamp" to java.time.Instant.ofEpochMilli(it.timestamp).toString()
+            )
+        }
+
+        val body = gson.toJson(mapOf("events" to payloadEvents)).toRequestBody("application/json".toMediaType())
+        val reqBuilder = Request.Builder()
+            .url(endpoint)
+            .post(body)
+
+        if (jwt.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $jwt")
+        }
+
+        httpClient.newCall(reqBuilder.build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "Failed to upload queued events", e)
+                callback(false, 0)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                if (response.isSuccessful) {
+                    callback(true, events.size)
+                } else {
+                    callback(false, 0)
                 }
             }
         })

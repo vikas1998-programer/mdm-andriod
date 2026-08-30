@@ -6,6 +6,7 @@ import com.rrv.mdm.dpc.data.entity.AdminMessageEntity
 import com.rrv.mdm.dpc.data.entity.ApplicationEntity
 import com.rrv.mdm.dpc.data.entity.CommandEntity
 import com.rrv.mdm.dpc.data.entity.PolicyEntity
+import com.rrv.mdm.dpc.data.entity.QueuedDeviceEventEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -98,14 +99,33 @@ interface PolicyDao {
     suspend fun insertPolicy(policy: PolicyEntity)
 }
 
+@Dao
+interface QueuedDeviceEventDao {
+    @Query("SELECT * FROM queued_device_events ORDER BY timestamp ASC LIMIT :limit")
+    suspend fun getPendingEvents(limit: Int = 50): List<QueuedDeviceEventEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEvent(event: QueuedDeviceEventEntity)
+
+    @Query("DELETE FROM queued_device_events WHERE id IN (:ids)")
+    suspend fun deleteEvents(ids: List<Long>)
+
+    @Query("SELECT COUNT(*) FROM queued_device_events")
+    suspend fun getQueuedEventCount(): Int
+
+    @Query("DELETE FROM queued_device_events WHERE timestamp < :cutoff")
+    suspend fun deleteOldEvents(cutoff: Long)
+}
+
 @Database(
     entities = [
         CommandEntity::class,
         ApplicationEntity::class,
         AdminMessageEntity::class,
-        PolicyEntity::class
+        PolicyEntity::class,
+        QueuedDeviceEventEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class RrvMdmDatabase : RoomDatabase() {
@@ -113,6 +133,7 @@ abstract class RrvMdmDatabase : RoomDatabase() {
     abstract fun applicationDao(): ApplicationDao
     abstract fun adminMessageDao(): AdminMessageDao
     abstract fun policyDao(): PolicyDao
+    abstract fun queuedDeviceEventDao(): QueuedDeviceEventDao
 
     companion object {
         @Volatile

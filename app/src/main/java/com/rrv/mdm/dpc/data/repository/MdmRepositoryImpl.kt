@@ -300,6 +300,46 @@ class MdmRepositoryImpl(
         }
     }
 
+    suspend fun queueEvent(
+        eventType: String,
+        severity: String = "INFO",
+        tag: String = "RRV-MDM-DPC",
+        source: String = "DPC_AGENT",
+        message: String,
+        metadataJson: String = "{}"
+    ) {
+        withContext(Dispatchers.IO) {
+            val event = com.rrv.mdm.dpc.data.entity.QueuedDeviceEventEntity(
+                eventType = eventType,
+                severity = severity,
+                tag = tag,
+                source = source,
+                message = message,
+                metadataJson = metadataJson,
+                timestamp = System.currentTimeMillis()
+            )
+            database.queuedDeviceEventDao().insertEvent(event)
+        }
+    }
+
+    suspend fun flushQueuedEvents(apiClient: com.rrv.mdm.dpc.network.MdmApiClient) {
+        withContext(Dispatchers.IO) {
+            val pending = database.queuedDeviceEventDao().getPendingEvents(50)
+            if (pending.isNotEmpty()) {
+                apiClient.uploadEvents(pending) { success, _ ->
+                    if (success) {
+                        kotlinx.coroutines.GlobalScope.let {
+                            // Cleanup uploaded events
+                            kotlinx.coroutines.runBlocking {
+                                database.queuedDeviceEventDao().deleteEvents(pending.map { it.id })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun computeDeviceStatus(): DeviceStatusInfo {
         val isDeviceOwner = dpm.isDeviceOwnerApp(context.packageName)
         val isEnrolled = legacyPrefsRepo.isEnrolled

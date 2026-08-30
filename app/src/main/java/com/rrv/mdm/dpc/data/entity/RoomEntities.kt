@@ -67,3 +67,18 @@ data class PolicyEntity(
     val isDefaultPolicy: Boolean = true,
     val appliedAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "queued_device_events")
+data class QueuedDeviceEventEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val eventType: String,
+    val severity: String = "INFO",
+    val tag: String = "RRV-MDM-DPC",
+    val source: String = "DPC_AGENT",
+    val correlationId: String? = null,
+    val message: String,
+    val metadataJson: String = "{}",
+    val timestamp: Long = System.currentTimeMillis(),
+    val retryCount: Int = 0
+)
