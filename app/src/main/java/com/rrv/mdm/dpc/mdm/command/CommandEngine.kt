@@ -195,6 +195,32 @@ class DiagnosticPingExecutor : CommandExecutor {
     }
 }
 
+class WipeDeviceExecutor : CommandExecutor {
+    override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
+        val app = context.applicationContext as RrvMdmApplication
+        if (!app.deviceManager.isDeviceOwner()) {
+            return ExecutionResult(false, "FACTORY_RESET / WIPE requires Device Owner privileges.")
+        }
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+
+        RrvLog.w("WipeDeviceExecutor", "⚠️ FACTORY RESET / ENTERPRISE WIPE INITIATED BY IT ADMIN!")
+
+        // Report ACK first before wiping hardware storage
+        app.mqttManager.publishCommandAck(command.commandId, "EXECUTED", "Factory reset initiated.")
+
+        // Brief delay to allow MQTT ACK packet to flush over socket
+        kotlinx.coroutines.delay(1000L)
+
+        return try {
+            dpm.wipeData(0)
+            ExecutionResult(true, "Device factory reset triggered.")
+        } catch (e: Exception) {
+            RrvLog.e("WipeDeviceExecutor", "Failed to wipe device", e)
+            ExecutionResult(false, "Failed to wipe device: ${e.message}")
+        }
+    }
+}
+
 /**
  * Central Command Processor: Manages deduplication, lifecycle states, and dispatching.
  */
@@ -231,7 +257,12 @@ class CommandProcessor(
         "LOCATION_REQUEST" to LocationRequestExecutor(),
         "REQUEST_LOCATION" to LocationRequestExecutor(),
         "DIAGNOSTIC_PING" to DiagnosticPingExecutor(),
-        "PING" to DiagnosticPingExecutor()
+        "PING" to DiagnosticPingExecutor(),
+        "FULL_WIPE" to WipeDeviceExecutor(),
+        "WIPE" to WipeDeviceExecutor(),
+        "WIPE_DEVICE" to WipeDeviceExecutor(),
+        "FACTORY_RESET" to WipeDeviceExecutor(),
+        "ENTERPRISE_WIPE" to WipeDeviceExecutor()
     )
 
     fun processCommand(command: MdmCommand) {
