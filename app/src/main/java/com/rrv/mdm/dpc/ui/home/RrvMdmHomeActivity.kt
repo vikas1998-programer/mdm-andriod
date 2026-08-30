@@ -43,6 +43,12 @@ class RrvMdmHomeActivity : AppCompatActivity() {
             }
         })
 
+        val app = application as com.rrv.mdm.dpc.RrvMdmApplication
+        if (app.deviceManager.isDeviceOwner()) {
+            val activePolicy = app.repository.getActivePolicy()
+            app.deviceManager.applyPolicy(activePolicy)
+        }
+
         // 2. Setup Responsive App Grid
         setupAppGrid()
 
@@ -224,6 +230,7 @@ class RrvMdmHomeActivity : AppCompatActivity() {
 
         if (app.deviceManager.isDeviceOwner()) {
             val activePolicy = app.repository.getActivePolicy()
+            app.deviceManager.applyPolicy(activePolicy)
             if (activePolicy.kioskModeEnabled) {
                 app.lockTaskController.startKioskLock(this)
             }

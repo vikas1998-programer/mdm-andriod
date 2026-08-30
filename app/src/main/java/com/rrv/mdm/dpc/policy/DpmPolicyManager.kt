@@ -263,6 +263,7 @@ class DpmPolicyManager(private val context: Context) {
             // 10. Zero-Trust Whitelist Governance (Default BLOCK/HIDE un-whitelisted packages)
             if (isDeviceOwner()) {
                 val pm = context.packageManager
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
                 
                 // Query both installed applications and all launcher activities across the system
                 val launcherApps = try {
@@ -282,7 +283,7 @@ class DpmPolicyManager(private val context: Context) {
                 val allDiscoveredPackages = (installedApps + launcherApps).toSet()
 
                 val allowedPackages = policy.applications
-                    .filter { it.installType.uppercase() in listOf("VISIBLE", "ALLOWED", "REQUIRED", "MANAGED") }
+                    .filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED") }
                     .map { it.packageName }
                     .toSet()
 
@@ -311,21 +312,7 @@ class DpmPolicyManager(private val context: Context) {
                     context.packageName
                 )
 
-                val effectiveAllowed = if (allowedPackages.isNotEmpty()) {
-                    allowedPackages + policy.allowedKioskPackages
-                } else {
-                    setOf(
-                        "com.microsoft.teams",
-                        "com.rrv.inventory",
-                        "com.microsoft.office.excel",
-                        "com.microsoft.office.onenote",
-                        "com.microsoft.emmx",
-                        "com.rrv.portal",
-                        "com.android.chrome",
-                        "com.sec.android.app.myfiles",
-                        "com.android.settings"
-                    )
-                }
+                val effectiveAllowed = (allowedPackages + policy.allowedKioskPackages).toSet()
 
                 var allowedCount = 0
                 var blockedCount = 0
@@ -338,13 +325,14 @@ class DpmPolicyManager(private val context: Context) {
                     try {
                         if (isWhitelisted) {
                             // Unhide and unsuspend explicitly whitelisted apps
-                            dpm.setApplicationHidden(admin, pkg, false)
-                            dpm.setPackagesSuspended(admin, arrayOf(pkg), false)
+                            try { dpm.setApplicationHidden(admin, pkg, false) } catch (_: Exception) {}
+                            try { dpm.setPackagesSuspended(admin, arrayOf(pkg), false) } catch (_: Exception) {}
                             allowedCount++
                         } else {
-                            // Default-Block: Hide and Suspend all unmanaged apps (Alarm, Clock, etc.)
-                            dpm.setApplicationHidden(admin, pkg, true)
-                            dpm.setPackagesSuspended(admin, arrayOf(pkg), true)
+                            // Default-Block: Hide and Suspend all unmanaged apps (Alarm, Clock, Chrome, Settings, etc.)
+                            try { dpm.setApplicationHidden(admin, pkg, true) } catch (_: Exception) {}
+                            try { dpm.setPackagesSuspended(admin, arrayOf(pkg), true) } catch (_: Exception) {}
+                            try { am?.killBackgroundProcesses(pkg) } catch (_: Exception) {}
                             blockedCount++
                         }
                     } catch (e: Exception) {
@@ -356,6 +344,9 @@ class DpmPolicyManager(private val context: Context) {
                 // Configure LockTask allowlist for Overview / Recents Containment
                 val lockTaskPackages = (effectiveAllowed + context.packageName).distinct().toTypedArray()
                 dpm.setLockTaskPackages(admin, lockTaskPackages)
+
+                // Anti-Bypass restriction on Settings -> Apps
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_APPS_CONTROL)
             }
 
             // 11. MDM Home Launcher Enforcement

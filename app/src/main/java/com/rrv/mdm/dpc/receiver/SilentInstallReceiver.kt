@@ -45,6 +45,7 @@ class SilentInstallReceiver : BroadcastReceiver() {
                     """.trimIndent()
                     mqttManager.publishRaw(topic, payload, qos = 1, retained = false)
                 }
+                app?.deviceManager?.applyPolicy(app.repository.getActivePolicy())
             }
 
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {

@@ -70,9 +70,17 @@ class RrvMdmApplication : Application() {
         if (deviceManager.isDeviceOwner()) {
             deviceManager.setAsDefaultHomeLauncher()
             policyManager.enforceBaselineSecurity()
+            deviceManager.applyPolicy(repository.getActivePolicy())
         }
 
-        // 4. Auto-connect MQTT Command Channel if Device is Enrolled
+        // 4. Register package install/update default-deny receiver
+        try {
+            com.rrv.mdm.dpc.receiver.AppEventPublisher.registerDynamically(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register AppEventPublisher: ${e.message}")
+        }
+
+        // 5. Auto-connect MQTT Command Channel if Device is Enrolled
         if (repository.isEnrolled) {
             mqttManager.connect()
             try {

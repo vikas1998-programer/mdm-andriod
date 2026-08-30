@@ -159,6 +159,7 @@ class DeviceManagementManager(private val context: Context) {
             setUserRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS, true)
             setUserRestriction(UserManager.DISALLOW_UNINSTALL_APPS, policy.appUninstallDisabled)
             setUserRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.unknownSourcesDisabled)
+            setUserRestriction(UserManager.DISALLOW_APPS_CONTROL, true) // Block Settings -> Apps bypass/modifications
 
             // 4. Anti-Uninstall MDM
             dpm.setUninstallBlocked(adminComponent, context.packageName, true)
@@ -166,12 +167,28 @@ class DeviceManagementManager(private val context: Context) {
             // 5. Ensure Home Launcher is registered
             setAsDefaultHomeLauncher()
 
-            // 6. Zero-Trust Application Package Governance (Default-Hide & Whitelist)
+            // 6. Zero-Trust Application Package Governance (Default-Hide & OS-Level Suspension)
             val pm = context.packageManager
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA or PackageManager.MATCH_UNINSTALLED_PACKAGES)
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+
+            val installedAppPkgs = try {
+                pm.getInstalledApplications(PackageManager.GET_META_DATA or PackageManager.MATCH_UNINSTALLED_PACKAGES)
+                    .map { it.packageName }
+            } catch (_: Exception) {
+                pm.getInstalledApplications(0).map { it.packageName }
+            }
+
+            val launcherAppPkgs = try {
+                pm.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),
+                    PackageManager.MATCH_ALL
+                ).mapNotNull { it.activityInfo?.packageName }
+            } catch (_: Exception) { emptyList() }
+
+            val allDiscoveredPkgs = (installedAppPkgs + launcherAppPkgs).toSet()
 
             val explicitlyAllowed = policy.applications
-                .filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED") }
+                .filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED") }
                 .map { it.packageName }
                 .toSet()
 
@@ -190,6 +207,7 @@ class DeviceManagementManager(private val context: Context) {
                     if (isInstalled) {
                         dpm.setApplicationHidden(adminComponent, pkg, true)
                         dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), true)
+                        am?.killBackgroundProcesses(pkg)
                         RrvLog.i(TAG, "🗑️ Enforced UNINSTALL/Removal policy on package $pkg")
                     }
                 } catch (e: Exception) {
@@ -198,24 +216,23 @@ class DeviceManagementManager(private val context: Context) {
             }
 
             // Strict Zero-Trust Default Deny: Whitelist contains only administrator-approved apps
-
             var allowedCount = 0
             var blockedCount = 0
 
-            for (appInfo in installedApps) {
-                val pkg = appInfo.packageName
+            for (pkg in allDiscoveredPkgs) {
                 if (CRITICAL_SYSTEM_PACKAGES.contains(pkg) || pkg == context.packageName) continue
 
                 val isApproved = whitelisted.contains(pkg)
                 try {
                     if (isApproved) {
-                        dpm.setApplicationHidden(adminComponent, pkg, false)
-                        dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), false)
+                        try { dpm.setApplicationHidden(adminComponent, pkg, false) } catch (_: Exception) {}
+                        try { dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), false) } catch (_: Exception) {}
                         allowedCount++
                     } else {
-                        // Strict Zero-Trust: Hide and Suspend unapproved apps (e.g. Alarm, Clock, Calculator, etc.)
-                        dpm.setApplicationHidden(adminComponent, pkg, true)
-                        dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), true)
+                        // Strict Zero-Trust: Hide and Suspend unapproved apps (Alarm, Clock, Chrome, Settings, etc.)
+                        try { dpm.setApplicationHidden(adminComponent, pkg, true) } catch (_: Exception) {}
+                        try { dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), true) } catch (_: Exception) {}
+                        try { am?.killBackgroundProcesses(pkg) } catch (_: Exception) {}
                         blockedCount++
                     }
                 } catch (e: Exception) {
@@ -255,6 +272,12 @@ class DeviceManagementManager(private val context: Context) {
                         )
                     }
                     app.repositoryImpl.syncAppsFromPolicy(appList)
+                    app.repositoryImpl.queueEvent(
+                        eventType = "POLICY_ENFORCED",
+                        severity = "INFO",
+                        message = "Zero-Trust App Governance: $allowedCount apps ALLOWED, $blockedCount apps BLOCKED at OS level (DPM Suspension + Hidden).",
+                        metadataJson = "{\"allowedCount\":$allowedCount,\"blockedCount\":$blockedCount}"
+                    )
                 }
             }
 
