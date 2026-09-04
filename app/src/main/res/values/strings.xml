@@ -15,7 +15,7 @@
     <string name="enroll_subtitle">Zero-Touch &amp; QR Code Hardware Onboarding</string>
     <string name="enroll_scan_qr">Scan Provisioning QR Code</string>
     <string name="enroll_manual_btn">Manual Server Provisioning</string>
-    <string name="enroll_server_url_hint">https://mdm.rrvsoftware.com</string>
+    <string name="enroll_server_url_hint">https://mdm.example.com</string>
     <string name="enroll_token_hint">Organization Enrollment Token</string>
     <string name="enroll_submit_btn">Initiate Device Enrollment</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.policy
 
+import android.annotation.SuppressLint
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
@@ -14,6 +15,7 @@ import com.rrv.mdm.dpc.util.RrvLog
 /**
  * Handles Android Enterprise DevicePolicyManager (DPM) restrictions and hardware peripherals.
  */
+@SuppressLint("MissingPermission")
 class DpmPolicyManager(private val context: Context) {
 
     companion object {
@@ -225,7 +227,9 @@ class DpmPolicyManager(private val context: Context) {
 
             // 7. Password Complexity
             try {
+                @Suppress("DEPRECATION")
                 dpm.setPasswordQuality(admin, DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX)
+                @Suppress("DEPRECATION")
                 dpm.setPasswordMinimumLength(admin, policy.minPasswordLength)
                 dpm.setMaximumFailedPasswordsForWipe(admin, policy.maxFailedAttempts)
             } catch (e: Exception) {
@@ -245,17 +249,25 @@ class DpmPolicyManager(private val context: Context) {
 
             // 9. Audio & Volume Restrictions
             try {
+                if (policy.masterVolumeMuted != true) {
+                    policy.mediaVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it) }
+                    policy.alarmVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_ALARM, it) }
+                    policy.ringVolumePercent?.let {
+                        setStreamVolume(android.media.AudioManager.STREAM_RING, it)
+                        setStreamVolume(android.media.AudioManager.STREAM_NOTIFICATION, it)
+                        setStreamVolume(android.media.AudioManager.STREAM_SYSTEM, it)
+                    }
+                }
                 if (isDeviceOwner()) {
                     dpm.setMasterVolumeMuted(admin, policy.masterVolumeMuted)
                     if (policy.volumeAdjustDisabled) {
                         dpm.addUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME)
+                        Log.i(TAG, "🔒 Hardware Volume Keys: LOCKED (DISALLOW_ADJUST_VOLUME)")
                     } else {
                         dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME)
+                        Log.i(TAG, "🔓 Hardware Volume Keys: UNLOCKED")
                     }
                 }
-                policy.mediaVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it) }
-                policy.alarmVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_ALARM, it) }
-                policy.ringVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_RING, it) }
             } catch (e: Exception) {
                 Log.w(TAG, "Audio settings warning: ${e.message}")
             }
@@ -307,6 +319,15 @@ class DpmPolicyManager(private val context: Context) {
                 )
 
                 val effectiveAllowed = (allowedPackages + policy.allowedKioskPackages + protectedPackages).toSet()
+
+                // Explicitly unhide, unsuspend, and enable all authorized packages (including pre-installed system apps)
+                for (pkg in effectiveAllowed) {
+                    if (pkg != context.packageName) {
+                        try { dpm.enableSystemApp(admin, pkg) } catch (_: Exception) {}
+                        try { dpm.setApplicationHidden(admin, pkg, false) } catch (_: Exception) {}
+                        try { dpm.setPackagesSuspended(admin, arrayOf(pkg), false) } catch (_: Exception) {}
+                    }
+                }
 
                 // Only govern launchable apps (never touch headless system services / Zygote overlays)
                 val governablePackages = launcherApps.toSet() - protectedPackages
@@ -405,11 +426,14 @@ class DpmPolicyManager(private val context: Context) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
             val maxVol = audioManager.getStreamMaxVolume(streamType)
-            val targetVol = ((percent.coerceIn(0, 100) * maxVol) / 100).coerceIn(0, maxVol)
+            val minVol = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
+            } else 0
+            val targetVol = (minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
             audioManager.setStreamVolume(streamType, targetVol, 0)
             Log.i(TAG, "Audio stream $streamType volume set to $percent% ($targetVol/$maxVol)")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to set audio stream volume", e)
+            Log.w(TAG, "Failed to set audio stream $streamType volume: ${e.message}")
         }
     }
 

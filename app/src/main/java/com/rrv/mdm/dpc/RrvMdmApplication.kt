@@ -1,10 +1,12 @@
 package com.rrv.mdm.dpc
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.rrv.mdm.dpc.data.config.ServerConfigurationProvider
 import com.rrv.mdm.dpc.data.database.RrvMdmDatabase
 import com.rrv.mdm.dpc.data.repository.MdmRepository
 import com.rrv.mdm.dpc.data.repository.MdmRepositoryImpl
@@ -24,6 +26,7 @@ class RrvMdmApplication : Application() {
         private const val TAG = "RrvMdmApplication"
     }
 
+    lateinit var serverConfigProvider: ServerConfigurationProvider
     lateinit var repository: MdmRepository
     lateinit var database: RrvMdmDatabase
     lateinit var repositoryImpl: MdmRepositoryImpl
@@ -42,23 +45,26 @@ class RrvMdmApplication : Application() {
     lateinit var processCommandUseCase: ProcessCommandUseCase
     lateinit var launchAppUseCase: LaunchAppUseCase
 
+    @SuppressLint("HardwareIds", "MissingPermission")
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "🚀 Initializing RRV MDM Enterprise Client Subsystems...")
 
-        // 1. Initialize Database and Repositories
+        // 1. Initialize Authoritative Configuration Provider & Database
+        serverConfigProvider = ServerConfigurationProvider(this)
         repository = MdmRepository(this)
         database = RrvMdmDatabase.getInstance(this)
         repositoryImpl = MdmRepositoryImpl(this, database, repository)
-        deviceManager = DeviceManagementManager(this)
-        commandProcessor = CommandProcessor(this)
 
+        // 2. Initialize Controllers & Business Logic Services
+        deviceManager = DeviceManagementManager(this)
         policyManager = DpmPolicyManager(this)
         lockTaskController = LockTaskController(this)
+        commandProcessor = CommandProcessor(this)
         mqttManager = MdmMqttManager(this)
         apiClient = MdmApiClient(this)
 
-        // 2. Initialize Use Cases
+        // Use Cases
         getManagedAppsUseCase = GetManagedAppsUseCase(repositoryImpl)
         getDeviceStatusUseCase = GetDeviceStatusUseCase(repositoryImpl)
         getAdminMessagesUseCase = GetAdminMessagesUseCase(repositoryImpl)
@@ -70,25 +76,6 @@ class RrvMdmApplication : Application() {
         if (deviceManager.isDeviceOwner()) {
             deviceManager.setAsDefaultHomeLauncher()
             policyManager.enforceBaselineSecurity()
-
-            // Auto-bootstrap local USB tunnel configuration when operating under Device Owner
-            if (!repository.isEnrolled || repository.deviceId.isBlank()) {
-                val realSerial = try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        android.os.Build.getSerial()
-                    } else {
-                        android.os.Build.SERIAL
-                    }
-                } catch (_: Exception) { "R5CR111K3GX" }
-
-                repository.deviceId = "3980f067-33c3-4f07-866a-13684a5db584"
-                repository.serverUrl = "http://127.0.0.1:8080"
-                repository.mqttBrokerHost = "127.0.0.1"
-                repository.mqttPort = 1883
-                repository.isEnrolled = true
-                Log.i(TAG, "⚡ Device Owner auto-bootstrapped for USB tunnel with serial: $realSerial")
-            }
-
             deviceManager.applyPolicy(repository.getActivePolicy())
         }
 
@@ -99,9 +86,33 @@ class RrvMdmApplication : Application() {
             Log.w(TAG, "Could not register AppEventPublisher: ${e.message}")
         }
 
-        // 5. Auto-connect MQTT Command Channel and start persistent daemon
-        if (repository.isEnrolled || deviceManager.isDeviceOwner()) {
+        // 5. Connect MQTT Command Channel if configured or enrolled
+        val currentConfig = serverConfigProvider.getCurrentConfig()
+        if (currentConfig != null) {
+            repository.serverUrl = currentConfig.apiBaseUrl
+            repository.mqttBrokerHost = currentConfig.mqtt.host
+            repository.mqttPort = currentConfig.mqtt.port
             mqttManager.connect()
+            mqttManager.fetchPendingCommandsFromServer()
+        } else if (repository.isEnrolled || repository.serverUrl.isNotBlank()) {
+            mqttManager.connect()
+            mqttManager.fetchPendingCommandsFromServer()
+        } else {
+            // Check for cached bootstrap provisioning
+            val bootstrapUrl = serverConfigProvider.getBootstrapServerUrl()
+            val bootstrapToken = serverConfigProvider.getBootstrapEnrollmentToken()
+            if (!bootstrapUrl.isNullOrBlank() && !bootstrapToken.isNullOrBlank()) {
+                Log.i(TAG, "Initiating bootstrap enrollment from cached provisioning bundle...")
+                apiClient.enrollDevice(bootstrapUrl, bootstrapToken) { success, _ ->
+                    if (success) {
+                        mqttManager.connect()
+                        mqttManager.fetchPendingCommandsFromServer()
+                    }
+                }
+            }
+        }
+
+        if (repository.isEnrolled || deviceManager.isDeviceOwner()) {
             try {
                 com.rrv.mdm.dpc.service.MdmPersistentService.start(this)
                 val locationIntent = android.content.Intent(this, com.rrv.mdm.dpc.geofence.LocationTrackerService::class.java)

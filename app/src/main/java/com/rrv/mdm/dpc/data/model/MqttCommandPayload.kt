@@ -11,10 +11,12 @@ import com.google.gson.annotations.SerializedName
  *   payloadJson will be null/empty in new pattern — device fetches it via REST
  */
 data class MqttCommandPayload(
-    @SerializedName("commandId") val commandId: String = "",
+    @SerializedName("commandId", alternate = ["id"]) val commandId: String = "",
     @SerializedName("commandType") val commandType: String = "",
     @SerializedName("payloadJson") val payloadJson: String? = null,  // nullable — signal-only MQTT
-    @SerializedName("issuedAt") val issuedAt: Long = System.currentTimeMillis(),
+    @SerializedName("createdAt") val createdAt: String? = null,
+    @SerializedName("dispatchedAt") val dispatchedAt: String? = null,
+    @SerializedName("issuedAt") val issuedAt: Any? = null,
     @SerializedName("requireAck") val requireAck: Boolean = true
 )
 

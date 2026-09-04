@@ -45,6 +45,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         startClockTicker()
         seedDefaultEnterpriseAppsIfEmpty()
+        app.mqttManager.fetchPendingCommandsFromServer()
     }
 
     private fun startClockTicker() {
@@ -85,7 +86,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val pm = app.packageManager
             val activePolicy = app.repository.getActivePolicy()
-            val policyApps = activePolicy.applications.filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "ALLOWED", "REQUIRED", "MANAGED", "FORCE_INSTALLED", "AVAILABLE", "INSTALL") }
+            val policyApps = activePolicy.applications.filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED", "MANDATORY", "MANDATORY_SILENT", "MANAGED_SILENT", "SILENT", "OPTIONAL", "AUTO_INSTALL") }
 
             val appsToSeed = if (policyApps.isNotEmpty()) {
                 policyApps.map { appPolicy ->

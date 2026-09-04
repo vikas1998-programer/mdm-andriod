@@ -247,7 +247,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:tint="#94A3B8"
+            app:tint="#94A3B8"
             android:contentDescription="Dismiss" />
     </LinearLayout>
 

@@ -84,9 +84,7 @@ class ApkDownloadWorker(
 
     override suspend fun doWork(): Result {
         val commandId  = inputData.getString("commandId") ?: ""
-        val appId      = inputData.getString("appId") ?: ""
         val packageName = inputData.getString("packageName") ?: return Result.failure()
-        val appTitle   = inputData.getString("appTitle") ?: packageName
         val downloadUrl = inputData.getString("downloadUrl") ?: return Result.failure()
         val expectedSha = inputData.getString("sha256") ?: ""
         val versionCode = inputData.getInt("versionCode", 0)
@@ -105,7 +103,7 @@ class ApkDownloadWorker(
             downloadApk(downloadUrl, apkFile, repository.deviceJwt)
         } catch (e: IOException) {
             RrvLog.e(TAG, "Download failed for $packageName: ${e.message}", e)
-            mqttManager?.publishCommandAck(commandId, "FAILED", "APK download error: ${e.message}")
+            mqttManager.publishCommandAck(commandId, "FAILED", "APK download error: ${e.message}")
             return Result.retry()
         }
 
@@ -115,7 +113,7 @@ class ApkDownloadWorker(
             if (!actualSha.equals(expectedSha, ignoreCase = true)) {
                 RrvLog.e(TAG, "❌ SHA-256 mismatch for $packageName! expected=$expectedSha got=$actualSha")
                 apkFile.delete()
-                mqttManager?.publishCommandAck(commandId, "FAILED", "SHA-256 integrity check failed")
+                mqttManager.publishCommandAck(commandId, "FAILED", "SHA-256 integrity check failed")
                 return Result.failure()
             }
             RrvLog.i(TAG, "✓ SHA-256 verified for $packageName")
@@ -125,7 +123,7 @@ class ApkDownloadWorker(
         try {
             silentInstall(apkFile, packageName)
             RrvLog.i(TAG, "✅ APK install session committed: $packageName v$versionName")
-            mqttManager?.publishCommandAck(commandId, "EXECUTED", "APK installed silently: $packageName v$versionName")
+            mqttManager.publishCommandAck(commandId, "EXECUTED", "APK installed silently: $packageName v$versionName")
 
             // Persist managed config values for this package
             if (appConfigJson.isNotBlank() && appConfigJson != "{}") {
@@ -134,7 +132,7 @@ class ApkDownloadWorker(
         } catch (e: Exception) {
             RrvLog.e(TAG, "Silent install failed for $packageName: ${e.message}", e)
             apkFile.delete()
-            mqttManager?.publishCommandAck(commandId, "FAILED", "Silent install error: ${e.message}")
+            mqttManager.publishCommandAck(commandId, "FAILED", "Silent install error: ${e.message}")
             return Result.retry()
         }
 
@@ -147,10 +145,10 @@ class ApkDownloadWorker(
     @Throws(IOException::class)
     private fun downloadApk(url: String, dest: File, jwt: String?) {
         val app = context.applicationContext as RrvMdmApplication
-        val fullUrl = if (url.startsWith("http://") || url.startsWith("https://")) {
+        val fullUrl = if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
             url
         } else {
-            val base = app.repository.serverUrl.trimEnd('/')
+            val base = (app.serverConfigProvider.getApiBaseUrl() ?: app.repository.serverUrl).trimEnd('/')
             val path = if (url.startsWith("/")) url else "/$url"
             "$base$path"
         }

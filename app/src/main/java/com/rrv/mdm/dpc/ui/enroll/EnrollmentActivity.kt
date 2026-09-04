@@ -26,8 +26,16 @@ class EnrollmentActivity : AppCompatActivity() {
         val passedUrl = intent.getStringExtra("EXTRA_SERVER_URL")
         val passedToken = intent.getStringExtra("EXTRA_ENROLLMENT_TOKEN")
 
-        binding.etServerUrl.setText(passedUrl ?: "http://127.0.0.1:8080")
-        binding.etEnrollToken.setText(passedToken ?: "rrv-tok-76e0b96c70cd409e")
+        val cachedUrl = app.serverConfigProvider.getBootstrapServerUrl() 
+            ?: app.serverConfigProvider.getApiBaseUrl() 
+            ?: app.repository.serverUrl.takeIf { it.isNotBlank() }
+            ?: "https://yang-neighbors-affair-disks.trycloudflare.com"
+        val cachedToken = app.serverConfigProvider.getBootstrapEnrollmentToken() 
+            ?: app.repository.enrollmentToken.takeIf { it.isNotBlank() }
+            ?: "RRV-DEMO-2026"
+
+        binding.etServerUrl.setText(passedUrl ?: cachedUrl)
+        binding.etEnrollToken.setText(passedToken ?: cachedToken)
 
         binding.btnEnrollSubmit.setOnClickListener {
             val serverUrl = binding.etServerUrl.text.toString().trim()

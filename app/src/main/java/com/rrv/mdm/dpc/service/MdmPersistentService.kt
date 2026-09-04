@@ -50,6 +50,7 @@ class MdmPersistentService : Service() {
     }
 
     private var watchdogJob: Job? = null
+    private var heartbeatJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,8 +81,36 @@ class MdmPersistentService : Service() {
         }
 
         startPolicyWatchdog(app)
+        startPeriodicHeartbeat(app)
 
         return START_STICKY
+    }
+
+    private fun startPeriodicHeartbeat(app: RrvMdmApplication) {
+        heartbeatJob?.cancel()
+        heartbeatJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                delay(45_000L) // Transmit status & telemetry to MDM server every 45 seconds
+                try {
+                    if (app.repository.isEnrolled || app.deviceManager.isDeviceOwner()) {
+                        if (app.mqttManager.isConnected()) {
+                            app.mqttManager.publishTelemetry(null, true)
+                        } else {
+                            val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+                            val batteryPct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
+                            val isCharging = bm?.isCharging ?: false
+                            val deviceId = app.repository.deviceId
+                            if (deviceId.isNotBlank()) {
+                                app.apiClient.sendHeartbeat(deviceId, batteryPct, isCharging)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Persistent service 45s heartbeat tick exception: ${e.message}")
+                }
+            }
+        }
+        Log.i(TAG, "⏰ 45-second high-frequency device telemetry heartbeat loop active.")
     }
 
     private fun startPolicyWatchdog(app: RrvMdmApplication) {
@@ -110,6 +139,7 @@ class MdmPersistentService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         watchdogJob?.cancel()
+        heartbeatJob?.cancel()
         Log.w(TAG, "⚠️ MDM Persistent Service destroyed — START_STICKY will auto-restart.")
     }
 

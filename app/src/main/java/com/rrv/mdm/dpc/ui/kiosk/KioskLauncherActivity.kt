@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.ui.kiosk
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -12,6 +13,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.rrv.mdm.dpc.RrvMdmApplication
@@ -67,18 +69,12 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         // Register live policy refresh receiver
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(
-                policyUpdateReceiver,
-                android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED"),
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            registerReceiver(
-                policyUpdateReceiver,
-                android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED")
-            )
-        }
+        ContextCompat.registerReceiver(
+            this,
+            policyUpdateReceiver,
+            android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -351,6 +347,9 @@ class KioskLauncherActivity : AppCompatActivity() {
         } catch (_: Exception) {}
     }
 
+    @SuppressLint("MissingSuperCall")
+    @Deprecated("Deprecated in Java", ReplaceWith("Unit"))
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
         // Suppress hardware back button in Kiosk Launcher - NEVER exit to stock launcher
     }

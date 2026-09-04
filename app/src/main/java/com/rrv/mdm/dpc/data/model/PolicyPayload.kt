@@ -155,10 +155,11 @@ data class PolicyPayload(
                             }
                         }
                     }
-                    val visiblePkgs = appList.filter { it.installType == "VISIBLE" || it.installType == "ALLOWED" || it.installType == "REQUIRED" }
-                        .map { it.packageName }
+                    val visiblePkgs = appList.filter {
+                        it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED", "MANDATORY", "MANDATORY_SILENT", "MANAGED_SILENT", "SILENT", "OPTIONAL", "AUTO_INSTALL")
+                    }.map { it.packageName }
                     if (visiblePkgs.isNotEmpty()) {
-                        allowedKiosk = visiblePkgs.distinct()
+                        allowedKiosk = (allowedKiosk + visiblePkgs).distinct()
                     }
                 }
 
@@ -168,10 +169,13 @@ data class PolicyPayload(
                 var autoBright = base.autoBrightnessEnabled
                 var timeout = base.screenTimeoutSeconds
                 if (disp != null) {
-                    (disp["screenBrightnessPercent"] as? Number)?.let { brightness = it.toInt() }
-                    (disp["autoBrightnessEnabled"] as? Boolean)?.let { autoBright = it }
-                    (disp["screenTimeoutSeconds"] as? Number)?.let { timeout = it.toInt() }
+                    (disp["screenBrightnessPercent"] as? Number ?: disp["brightness"] as? Number ?: disp["screen_brightness_percent"] as? Number)?.let { brightness = it.toInt() }
+                    (disp["autoBrightnessEnabled"] as? Boolean ?: disp["auto_brightness_enabled"] as? Boolean)?.let { autoBright = it }
+                    (disp["screenTimeoutSeconds"] as? Number ?: disp["timeout"] as? Number ?: disp["screen_timeout_seconds"] as? Number)?.let { timeout = it.toInt() }
                 }
+                (root["screenBrightnessPercent"] as? Number ?: root["brightness"] as? Number ?: root["screen_brightness_percent"] as? Number)?.let { brightness = it.toInt() }
+                (root["autoBrightnessEnabled"] as? Boolean ?: root["auto_brightness_enabled"] as? Boolean)?.let { autoBright = it }
+                (root["screenTimeoutSeconds"] as? Number ?: root["timeout"] as? Number ?: root["screen_timeout_seconds"] as? Number)?.let { timeout = it.toInt() }
 
                 val aud = root["audio"] as? Map<*, *>
                 var masterMute = base.masterVolumeMuted
@@ -180,12 +184,17 @@ data class PolicyPayload(
                 var alarmVol = base.alarmVolumePercent
                 var ringVol = base.ringVolumePercent
                 if (aud != null) {
-                    (aud["masterVolumeMuted"] as? Boolean)?.let { masterMute = it }
-                    (aud["volumeAdjustDisabled"] as? Boolean)?.let { volLock = it }
-                    (aud["mediaVolumePercent"] as? Number)?.let { mediaVol = it.toInt() }
-                    (aud["alarmVolumePercent"] as? Number)?.let { alarmVol = it.toInt() }
-                    (aud["ringVolumePercent"] as? Number)?.let { ringVol = it.toInt() }
+                    (aud["masterVolumeMuted"] as? Boolean ?: aud["master_volume_muted"] as? Boolean)?.let { masterMute = it }
+                    (aud["volumeAdjustDisabled"] as? Boolean ?: aud["volume_adjust_disabled"] as? Boolean)?.let { volLock = it }
+                    (aud["mediaVolumePercent"] as? Number ?: aud["media_volume_percent"] as? Number ?: aud["mediaVolume"] as? Number)?.let { mediaVol = it.toInt() }
+                    (aud["alarmVolumePercent"] as? Number ?: aud["alarm_volume_percent"] as? Number ?: aud["alarmVolume"] as? Number)?.let { alarmVol = it.toInt() }
+                    (aud["ringVolumePercent"] as? Number ?: aud["ring_volume_percent"] as? Number ?: aud["ringVolume"] as? Number)?.let { ringVol = it.toInt() }
                 }
+                (root["masterVolumeMuted"] as? Boolean ?: root["master_volume_muted"] as? Boolean)?.let { masterMute = it }
+                (root["volumeAdjustDisabled"] as? Boolean ?: root["volume_adjust_disabled"] as? Boolean)?.let { volLock = it }
+                (root["mediaVolumePercent"] as? Number ?: root["media_volume_percent"] as? Number ?: root["mediaVolume"] as? Number)?.let { mediaVol = it.toInt() }
+                (root["alarmVolumePercent"] as? Number ?: root["alarm_volume_percent"] as? Number ?: root["alarmVolume"] as? Number)?.let { alarmVol = it.toInt() }
+                (root["ringVolumePercent"] as? Number ?: root["ring_volume_percent"] as? Number ?: root["ringVolume"] as? Number)?.let { ringVol = it.toInt() }
 
                 base.copy(
                     cameraDisabled = cameraDisabled,

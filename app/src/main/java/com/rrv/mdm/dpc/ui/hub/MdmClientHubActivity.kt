@@ -17,6 +17,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.rrv.mdm.dpc.RrvMdmApplication
@@ -69,11 +71,12 @@ class MdmClientHubActivity : AppCompatActivity() {
         switchTab("HOME") // Default to Simple & Professional Home Dashboard
 
         // Register policy update broadcast receiver
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(policyReceiver, android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED"), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(policyReceiver, android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED"))
-        }
+        ContextCompat.registerReceiver(
+            this,
+            policyReceiver,
+            android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED"),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun setupNavigation() {
@@ -135,7 +138,6 @@ class MdmClientHubActivity : AppCompatActivity() {
     }
 
     private fun setupHeaderActions() {
-        val app = application as RrvMdmApplication
         binding.btnHeaderSync.setOnClickListener {
             triggerOnDemandSync()
         }
@@ -194,7 +196,7 @@ class MdmClientHubActivity : AppCompatActivity() {
             val memInfo = ActivityManager.MemoryInfo()
             actManager.getMemoryInfo(memInfo)
             val usedGb = (memInfo.totalMem - memInfo.availMem) / (1024.0 * 1024.0 * 1024.0)
-            binding.tvDiagRamUsage.text = String.format("%.1f GB", usedGb)
+            binding.tvDiagRamUsage.text = String.format(java.util.Locale.US, "%.1f GB", usedGb)
         } catch (_: Exception) {
             binding.tvDiagRamUsage.text = "4.8 GB"
         }
@@ -209,10 +211,10 @@ class MdmClientHubActivity : AppCompatActivity() {
             if (app.packageName.isBlank()) continue
             val isInst = isPackageInstalled(app.packageName, pm)
             val icon = try {
-                if (isInst) pm.getApplicationIcon(app.packageName) else getDrawable(com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)
+                if (isInst) pm.getApplicationIcon(app.packageName) else AppCompatResources.getDrawable(this, com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)
             } catch (_: Exception) {
-                getDrawable(com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)
-            }
+                AppCompatResources.getDrawable(this, com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)
+            } ?: AppCompatResources.getDrawable(this, com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)!!
 
             val sourceTag = if (app.packageName.startsWith("com.sec") || app.packageName.startsWith("com.google.android") || app.packageName.startsWith("com.android")) {
                 "📱 Pre-Installed OEM"

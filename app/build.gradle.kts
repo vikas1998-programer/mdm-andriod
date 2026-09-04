@@ -63,6 +63,13 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+        disable += listOf("HardwareIds", "VectorPath", "UseCompoundDrawables", "DisableBaselineAlignment", "Overdraw")
+    }
 }
 
 dependencies {

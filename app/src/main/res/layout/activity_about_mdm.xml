@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_corporate_wallpaper">
@@ -72,7 +73,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="MDM Server: https://mdm.rrvsoftware.com"
+                tools:text="MDM Server: Not configured"
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
@@ -81,7 +82,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="Device ID: 3980f067-33c3-4f07-866a-13684a5db584"
+                tools:text="Device ID: Unenrolled"
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 

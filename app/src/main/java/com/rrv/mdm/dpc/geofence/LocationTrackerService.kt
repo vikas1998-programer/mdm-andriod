@@ -25,15 +25,21 @@ class LocationTrackerService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private var nativeLocationManager: android.location.LocationManager? = null
+    private var nativeLocationListener: android.location.LocationListener? = null
+    private var lastDispatchedLocation: Location? = null
+    private var lastDispatchTimeMs: Long = 0L
+
     private val transitionEvaluator = GeofenceTransitionEvaluator(
-        deadbandMeters = 15.0,
-        dwellThresholdMs = 30_000L,
-        maxAcceptableAccuracyMeters = 35.0f
+        deadbandMeters = 5.0,
+        dwellThresholdMs = 15_000L,
+        maxAcceptableAccuracyMeters = 50.0f
     )
 
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        nativeLocationManager = getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
 
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
 
@@ -44,67 +50,104 @@ class LocationTrackerService : Service() {
             }
         }
 
+        nativeLocationListener = android.location.LocationListener { location ->
+            handleNewLocation(location)
+        }
+
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) {
+                    RrvLog.geo("Initial GPS fix obtained: ${loc.latitude}, ${loc.longitude}")
+                    handleNewLocation(loc)
+                }
+            }
+        } catch (_: Exception) {}
+
         requestLocationUpdates()
     }
 
     private fun requestLocationUpdates() {
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000)
-            .setMinUpdateIntervalMillis(5000)
-            .setMinUpdateDistanceMeters(10f)
+        // High-frequency 5-meter displacement provider
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000)
+            .setMinUpdateIntervalMillis(1000)
+            .setMinUpdateDistanceMeters(5.0f)
+            .setMaxUpdateDelayMillis(0)
             .build()
 
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-            RrvLog.geo("GPS High-Accuracy location sensor active (15s interval, 15m hysteresis, 30s dwell).")
+            RrvLog.geo("✓ Fused GPS active: 5m displacement threshold, 1s min interval.")
         } catch (e: SecurityException) {
-            RrvLog.e(TAG, "Location permission missing", e)
+            RrvLog.e(TAG, "Location permission missing for FusedLocationProviderClient", e)
+        }
+
+        // Native Android LocationManager dual fallback (GPS_PROVIDER & NETWORK_PROVIDER at 5 meters)
+        try {
+            nativeLocationManager?.let { lm ->
+                nativeLocationListener?.let { listener ->
+                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                        lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 1000L, 5.0f, listener, Looper.getMainLooper())
+                    }
+                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                        lm.requestLocationUpdates(android.location.LocationManager.NETWORK_PROVIDER, 1000L, 5.0f, listener, Looper.getMainLooper())
+                    }
+                }
+            }
+            RrvLog.geo("✓ Hardware GNSS active: 5-meter displacement listener registered.")
+        } catch (e: SecurityException) {
+            RrvLog.e(TAG, "Location permission missing for native LocationManager", e)
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Could not register native LocationManager listener: ${e.message}")
         }
     }
 
     private fun handleNewLocation(location: Location) {
+        if (location.latitude == 0.0 && location.longitude == 0.0) return
+
         val app = applicationContext as RrvMdmApplication
-        val zones = app.repository.getGeofences()
+        val lastLoc = lastDispatchedLocation
+        val distanceMoved = if (lastLoc != null) location.distanceTo(lastLoc) else Float.MAX_VALUE
+        val timeSinceLastDispatch = System.currentTimeMillis() - lastDispatchTimeMs
 
-        if (zones.isEmpty()) {
-            // Publish routine GPS Telemetry via MQTT
-            app.mqttManager.publishTelemetry(location, true)
-            return
-        }
+        // Trigger dispatch if device moved >= 5 meters OR at least 60 seconds elapsed
+        if (lastLoc == null || distanceMoved >= 5.0f || timeSinceLastDispatch >= 60_000L) {
+            lastDispatchedLocation = location
+            lastDispatchTimeMs = System.currentTimeMillis()
 
-        for (zone in zones) {
-            val event = transitionEvaluator.evaluate(location, zone)
-            when (event) {
-                is GeofenceTransitionEvent.BreachExit -> {
-                    RrvLog.w(TAG, "🚨 GEOFENCE BREACH CONFIRMED: Device exited zone '${event.zone.name}' after ${event.elapsedOutsideMs / 1000}s dwell.")
-                    app.mqttManager.publishSecurityAlert(
-                        "GEOFENCE_EXIT_BREACH",
-                        "Device confirmed outside zone '${event.zone.name}' (${event.elapsedOutsideMs / 1000}s dwell window elapsed)."
-                    )
-                    // Execute automated containment lockdown
-                    app.policyManager.lockScreenNow()
-                }
+            app.repository.lastLatitude = location.latitude
+            app.repository.lastLongitude = location.longitude
 
-                is GeofenceTransitionEvent.ValidEntry -> {
-                    RrvLog.geo("✓ GEOFENCE ENTRY CONFIRMED: Device re-entered zone '${event.zone.name}'.")
-                    app.mqttManager.publishSecurityAlert(
-                        "GEOFENCE_ENTER",
-                        "Device confirmed inside authorized zone '${event.zone.name}'."
-                    )
-                }
+            RrvLog.geo("📍 5m GPS Trigger: Displaced ${if (lastLoc == null) "Initial" else "${"%.1f".format(distanceMoved)}m"} -> [Lat: ${location.latitude}, Lng: ${location.longitude}, Acc: ±${"%.1f".format(location.accuracy)}m]")
 
-                is GeofenceTransitionEvent.DwellCompliant -> {
-                    RrvLog.d(TAG, "Zone '${event.zone.name}': Continuous dwell verified (${event.totalDwellMs / 1000}s).")
-                }
-
-                null -> {
-                    // Jitter filtered or pending dwell confirmation
+            val zones = app.repository.getGeofences()
+            if (zones.isNotEmpty()) {
+                for (zone in zones) {
+                    val event = transitionEvaluator.evaluate(location, zone)
+                    when (event) {
+                        is GeofenceTransitionEvent.BreachExit -> {
+                            RrvLog.w(TAG, "🚨 GEOFENCE BREACH: Device exited zone '${event.zone.name}' (${event.elapsedOutsideMs / 1000}s dwell).")
+                            app.mqttManager.publishSecurityAlert(
+                                "GEOFENCE_EXIT_BREACH",
+                                "Device confirmed outside zone '${event.zone.name}'."
+                            )
+                            app.policyManager.lockScreenNow()
+                        }
+                        is GeofenceTransitionEvent.ValidEntry -> {
+                            RrvLog.geo("✓ GEOFENCE ENTRY: Device re-entered '${event.zone.name}'.")
+                            app.mqttManager.publishSecurityAlert(
+                                "GEOFENCE_ENTER",
+                                "Device confirmed inside zone '${event.zone.name}'."
+                            )
+                        }
+                        else -> {}
+                    }
                 }
             }
-        }
 
-        val isCompliant = transitionEvaluator.isDeviceCompliant()
-        // Publish live telemetry via MQTT
-        app.mqttManager.publishTelemetry(location, isCompliant)
+            val isCompliant = transitionEvaluator.isDeviceCompliant()
+            // Publish live telemetry payload to server over MQTT
+            app.mqttManager.publishTelemetry(location, isCompliant)
+        }
     }
 
     private fun buildForegroundNotification(): Notification {
@@ -120,7 +163,7 @@ class LocationTrackerService : Service() {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("RRV Zero-Trust Spatial Shield")
-            .setContentText("Hardware-enforced geofence & telemetry monitoring active.")
+            .setContentText("Continuous 5-meter GPS precision tracking active.")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -130,6 +173,11 @@ class LocationTrackerService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
+        nativeLocationListener?.let { listener ->
+            try {
+                nativeLocationManager?.removeUpdates(listener)
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

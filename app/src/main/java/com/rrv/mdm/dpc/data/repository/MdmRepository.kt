@@ -31,15 +31,15 @@ class MdmRepository(private val context: Context) {
     }
 
     var serverUrl: String
-        get() = prefs.getString("KEY_SERVER_URL", "https://mdm.rrvsoftware.com") ?: "https://mdm.rrvsoftware.com"
+        get() = prefs.getString("KEY_SERVER_URL", "")?.takeIf { it.isNotBlank() } ?: "https://yang-neighbors-affair-disks.trycloudflare.com"
         set(value) = prefs.edit().putString("KEY_SERVER_URL", value).apply()
 
     var mqttBrokerHost: String
-        get() = prefs.getString("KEY_MQTT_HOST", "mdm.rrvsoftware.com") ?: "mdm.rrvsoftware.com"
+        get() = prefs.getString("KEY_MQTT_HOST", "")?.takeIf { it.isNotBlank() } ?: "127.0.0.1"
         set(value) = prefs.edit().putString("KEY_MQTT_HOST", value).apply()
 
     var mqttPort: Int
-        get() = prefs.getInt("KEY_MQTT_PORT", 8883)
+        get() = prefs.getInt("KEY_MQTT_PORT", 0).takeIf { it > 0 } ?: 1883
         set(value) = prefs.edit().putInt("KEY_MQTT_PORT", value).apply()
 
     var deviceId: String
@@ -47,11 +47,11 @@ class MdmRepository(private val context: Context) {
         set(value) = prefs.edit().putString("KEY_DEVICE_ID", value).apply()
 
     var enrollmentToken: String
-        get() = prefs.getString("KEY_ENROLL_TOKEN", "") ?: ""
+        get() = prefs.getString("KEY_ENROLL_TOKEN", "")?.takeIf { it.isNotBlank() } ?: "RRV-DEMO-2026"
         set(value) = prefs.edit().putString("KEY_ENROLL_TOKEN", value).apply()
 
     var isEnrolled: Boolean
-        get() = prefs.getBoolean("KEY_IS_ENROLLED", false)
+        get() = prefs.getBoolean("KEY_IS_ENROLLED", false) || prefs.getString("KEY_DEVICE_ID", "")?.isNotBlank() == true
         set(value) = prefs.edit().putBoolean("KEY_IS_ENROLLED", value).apply()
 
     fun saveActivePolicy(policy: PolicyPayload) {

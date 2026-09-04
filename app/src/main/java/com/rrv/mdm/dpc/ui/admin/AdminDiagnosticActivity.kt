@@ -18,6 +18,14 @@ class AdminDiagnosticActivity : AppCompatActivity() {
 
         val app = application as RrvMdmApplication
 
+        val config = app.serverConfigProvider.getCurrentConfig()
+        val env = config?.environment ?: "UNCONFIGURED"
+        val configVer = config?.configurationVersion ?: 0
+        val serverUrl = config?.apiBaseUrl ?: app.repository.serverUrl.takeIf { it.isNotBlank() } ?: "Not configured"
+        val mqttUri = config?.mqtt?.serverUri ?: run {
+            if (app.repository.mqttBrokerHost.isNotBlank()) "${app.repository.mqttBrokerHost}:${app.repository.mqttPort}" else "Not configured"
+        }
+
         val logs = StringBuilder()
         logs.append("=== RRV DPC DIAGNOSTICS ===\n")
         logs.append("Package: ${packageName}\n")
@@ -26,8 +34,9 @@ class AdminDiagnosticActivity : AppCompatActivity() {
         logs.append("Device Owner: ${app.policyManager.isDeviceOwner()}\n")
         logs.append("Admin Active: ${app.policyManager.isAdminActive()}\n")
         logs.append("Enrolled: ${app.repository.isEnrolled}\n")
-        logs.append("Server URL: ${app.repository.serverUrl}\n")
-        logs.append("MQTT Broker: ${app.repository.mqttBrokerHost}:${app.repository.mqttPort}\n")
+        logs.append("Environment: $env (Config v$configVer)\n")
+        logs.append("Server API Base: $serverUrl\n")
+        logs.append("MQTT Broker: $mqttUri\n")
         logs.append("Active Policy: ${app.repository.getActivePolicy().name}\n")
         logs.append("Active Geofences: ${app.repository.getGeofences().size} zones\n\n")
         logs.append("--- RECENT AGENT LOGS ---\n")

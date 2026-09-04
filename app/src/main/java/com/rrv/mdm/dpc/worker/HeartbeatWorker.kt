@@ -60,11 +60,6 @@ class HeartbeatWorker(
         val mqttManager = app.mqttManager
         val repository  = app.repository
 
-        if (mqttManager == null) {
-            RrvLog.w(TAG, "MQTT manager not initialized — skipping heartbeat")
-            return Result.retry()
-        }
-
         if (!mqttManager.isConnected()) {
             RrvLog.w(TAG, "MQTT not connected — attempting reconnect before heartbeat")
             mqttManager.connect()

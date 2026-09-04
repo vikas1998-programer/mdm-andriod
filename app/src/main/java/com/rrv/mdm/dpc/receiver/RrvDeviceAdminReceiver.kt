@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.PersistableBundle
 import android.util.Log
 import android.widget.Toast
@@ -31,6 +32,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             try {
                 if (dpm.isDeviceOwnerApp(context.packageName)) {
+                    @Suppress("DEPRECATION")
                     dpm.clearDeviceOwnerApp(context.packageName)
                     Log.i(TAG, "✓ Device Owner cleared successfully.")
                 }
@@ -59,40 +61,55 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
         Log.i(TAG, "🎉 Profile / Device Provisioning Complete. Initializing zero-trust hardware attestation...")
 
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val admin = getComponentName(context)
+
+        val app = context.applicationContext as RrvMdmApplication
 
         // Read QR code / Zero-Touch provisioning extras bundle if supplied
-        val extras: PersistableBundle? = intent.getParcelableExtra(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE)
+        @Suppress("DEPRECATION")
+        val extras: PersistableBundle? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE, PersistableBundle::class.java)
+        } else {
+            intent.getParcelableExtra(DevicePolicyManager.EXTRA_PROVISIONING_ADMIN_EXTRAS_BUNDLE)
+        }
         if (extras != null) {
-            val serverUrl = extras.getString("server_url", "https://mdm.rrvsoftware.com")
-            val token = extras.getString("enroll_token", "")
-            val repo = (context.applicationContext as RrvMdmApplication).repository
-            repo.serverUrl = serverUrl
-            repo.enrollmentToken = token
+            val serverUrl = extras.getString("server_url") ?: extras.getString("api_base_url")
+            val token = extras.getString("enroll_token") ?: extras.getString("enrollment_token")
+            val orgId = extras.getString("org_id")
+
+            if (!serverUrl.isNullOrBlank()) {
+                app.serverConfigProvider.saveBootstrap(
+                    com.rrv.mdm.dpc.data.config.BootstrapConfiguration(
+                        enrollmentServerUrl = serverUrl,
+                        enrollmentToken = token,
+                        orgId = orgId
+                    )
+                )
+                app.repository.serverUrl = serverUrl
+            }
+            if (!token.isNullOrBlank()) {
+                app.repository.enrollmentToken = token
+            }
             Log.i(TAG, "Provisioning bundle parsed: Server = $serverUrl")
 
-            if (!token.isNullOrBlank()) {
-                val apiClient = com.rrv.mdm.dpc.network.MdmApiClient(context)
-                apiClient.enrollDevice(serverUrl, token) { success, message ->
+            if (!serverUrl.isNullOrBlank() && !token.isNullOrBlank()) {
+                app.apiClient.enrollDevice(serverUrl, token) { success, message ->
                     if (success) {
                         Log.i(TAG, "✓ Zero-Touch automatic device enrollment succeeded.")
-                        (context.applicationContext as RrvMdmApplication).mqttManager.connect()
+                        app.mqttManager.connect()
                     } else {
                         Log.e(TAG, "✕ Zero-Touch enrollment error: $message")
                     }
                 }
             } else {
-                repo.isEnrolled = true
-                (context.applicationContext as RrvMdmApplication).mqttManager.connect()
+                app.mqttManager.connect()
             }
         } else {
-            (context.applicationContext as RrvMdmApplication).mqttManager.connect()
+            app.mqttManager.connect()
         }
 
         // Enable Kiosk Launcher as Default Home Intent
         if (dpm.isDeviceOwnerApp(context.packageName)) {
             Log.i(TAG, "App is confirmed DEVICE OWNER. Enforcing baseline zero-trust restrictions...")
-            val app = context.applicationContext as RrvMdmApplication
             app.lockTaskController.setAsDefaultHomeLauncher()
             app.policyManager.enforceBaselineSecurity()
 
@@ -122,12 +139,16 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
         }
     }
 
+    @Deprecated("Deprecated in Java", ReplaceWith("Unit"))
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onPasswordFailed(context: Context, intent: Intent) {
         super.onPasswordFailed(context, intent)
         Log.w(TAG, "🚨 Password failure event intercepted. Reporting to MDM MQTT telemetry...")
         (context.applicationContext as RrvMdmApplication).mqttManager.publishSecurityAlert("PASSWORD_FAILED", "Incorrect PIN/password entered on device.")
     }
 
+    @Deprecated("Deprecated in Java", ReplaceWith("Unit"))
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onPasswordSucceeded(context: Context, intent: Intent) {
         super.onPasswordSucceeded(context, intent)
         Log.i(TAG, "✓ Device successfully unlocked by authorized operator.")

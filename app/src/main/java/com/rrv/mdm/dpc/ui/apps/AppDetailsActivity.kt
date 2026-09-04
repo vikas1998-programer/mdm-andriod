@@ -32,11 +32,21 @@ class AppDetailsActivity : AppCompatActivity() {
             binding.ivDetailAppIcon.setImageDrawable(icon)
         } catch (_: Exception) {}
 
+        val isInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }
+        if (!isInstalled) {
+            binding.btnLaunchApp.text = "Not Installed on Device"
+            binding.btnLaunchApp.alpha = 0.6f
+        }
+
         binding.btnLaunchApp.setOnClickListener {
             val app = application as RrvMdmApplication
-            val launched = app.launchAppUseCase(packageName)
-            if (!launched) {
-                Toast.makeText(this, "Cannot launch: App is not installed or blocked by policy.", Toast.LENGTH_SHORT).show()
+            if (!isInstalled) {
+                Toast.makeText(this, "Cannot launch: $appName is not installed on this device.", Toast.LENGTH_SHORT).show()
+            } else {
+                val launched = app.launchAppUseCase(packageName)
+                if (!launched) {
+                    Toast.makeText(this, "Cannot launch: $appName is restricted by IT policy.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

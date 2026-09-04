@@ -28,17 +28,17 @@ object RrvLog {
     )
 
     fun d(tag: String, message: String) {
-        val formatted = recordLog("DEBUG", tag, message)
+        recordLog("DEBUG", tag, message)
         Log.d(tag, message)
     }
 
     fun i(tag: String, message: String) {
-        val formatted = recordLog("INFO", tag, message)
+        recordLog("INFO", tag, message)
         Log.i(tag, message)
     }
 
     fun w(tag: String, message: String, throwable: Throwable? = null) {
-        val formatted = recordLog("WARN", tag, "$message ${throwable?.message ?: ""}")
+        recordLog("WARN", tag, "$message ${throwable?.message ?: ""}")
         if (throwable != null) {
             Log.w(tag, message, throwable)
         } else {
@@ -47,7 +47,7 @@ object RrvLog {
     }
 
     fun e(tag: String, message: String, throwable: Throwable? = null) {
-        val formatted = recordLog("ERROR", tag, "$message ${throwable?.message ?: ""}")
+        recordLog("ERROR", tag, "$message ${throwable?.message ?: ""}")
         if (throwable != null) {
             Log.e(tag, message, throwable)
         } else {

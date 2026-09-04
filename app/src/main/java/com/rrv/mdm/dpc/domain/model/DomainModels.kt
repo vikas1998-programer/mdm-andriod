@@ -61,7 +61,7 @@ data class DeviceStatusInfo(
     val wifiSsid: String? = null,
     val storageFreeGb: Double = 0.0,
     val storageTotalGb: Double = 0.0,
-    val ipAddress: String = "127.0.0.1",
+    val ipAddress: String = "—",
     val isDeviceOwner: Boolean = true,
     val isOnline: Boolean = true
 )

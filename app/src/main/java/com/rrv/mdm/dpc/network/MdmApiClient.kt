@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.network
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
 import android.util.Log
@@ -16,6 +17,7 @@ import java.io.IOException
 /**
  * RESTful API Client for initial device enrollment, batch event uploads, and binary APK downloads.
  */
+@SuppressLint("HardwareIds", "MissingPermission")
 class MdmApiClient(private val context: Context) {
 
     companion object {
@@ -23,10 +25,18 @@ class MdmApiClient(private val context: Context) {
     }
 
     private val httpClient = OkHttpClient.Builder()
+        .addInterceptor { chain ->
+            val req = chain.request().newBuilder()
+                .addHeader("ngrok-skip-browser-warning", "true")
+                .build()
+            chain.proceed(req)
+        }
         .build()
 
     private val gson = Gson()
-    private val repository get() = (context.applicationContext as RrvMdmApplication).repository
+    private val app get() = context.applicationContext as RrvMdmApplication
+    private val repository get() = app.repository
+    private val configProvider get() = app.serverConfigProvider
 
     fun enrollDevice(serverUrl: String, token: String, callback: (Boolean, String) -> Unit) {
         val cleanServerUrl = serverUrl.trimEnd('/')
@@ -124,18 +134,58 @@ class MdmApiClient(private val context: Context) {
                         repository.deviceId = devId
                         repository.deviceJwt = jwt
 
-                        // Extract host from serverUrl for MQTT
-                        try {
-                            val uri = java.net.URI(cleanServerUrl)
-                            val host = uri.host ?: "127.0.0.1"
-                            repository.mqttBrokerHost = host
-                            repository.mqttPort = 1883
-                        } catch (_: Exception) {
-                            repository.mqttBrokerHost = "127.0.0.1"
-                            repository.mqttPort = 1883
+                        // Parse Dynamic Server Configuration returned by Server
+                        val serverConfigMap = respMap["serverConfig"] as? Map<*, *>
+                        if (serverConfigMap != null) {
+                            try {
+                                val configJson = gson.toJson(serverConfigMap)
+                                var serverConfig = gson.fromJson(configJson, com.rrv.mdm.dpc.data.config.ServerConfiguration::class.java)
+                                // If backend returned localhost/127.0.0.1 but device connected via remote/ngrok cleanServerUrl,
+                                // retain cleanServerUrl so device doesn't lose connectivity
+                                if ((serverConfig.apiBaseUrl.contains("localhost") || serverConfig.apiBaseUrl.contains("127.0.0.1")) &&
+                                    !cleanServerUrl.contains("localhost") && !cleanServerUrl.contains("127.0.0.1")) {
+                                    serverConfig = serverConfig.copy(apiBaseUrl = cleanServerUrl)
+                                }
+                                configProvider.applyServerConfiguration(serverConfig, testConnectivity = false)
+                                repository.serverUrl = serverConfig.apiBaseUrl
+                                repository.mqttBrokerHost = serverConfig.mqtt.host
+                                repository.mqttPort = serverConfig.mqtt.port
+                            } catch (ce: Exception) {
+                                Log.w(TAG, "Could not deserialize serverConfig directly: ${ce.message}")
+                            }
+                        } else {
+                            // Synthesize dynamic server config from enrollment URL
+                            try {
+                                val uri = java.net.URI(cleanServerUrl)
+                                val host = uri.host ?: "127.0.0.1"
+                                val isHttps = uri.scheme?.equals("https", ignoreCase = true) == true
+                                val mqttPort = if (isHttps) 8883 else 1883
+                                val dynamicConfig = com.rrv.mdm.dpc.data.config.ServerConfiguration(
+                                    apiBaseUrl = cleanServerUrl,
+                                    mqtt = com.rrv.mdm.dpc.data.config.MqttConfiguration(
+                                        host = host,
+                                        port = mqttPort,
+                                        tls = isHttps
+                                    ),
+                                    environment = if (isHttps) "PRODUCTION" else "DEVELOPMENT",
+                                    configurationVersion = 1
+                                )
+                                configProvider.applyServerConfiguration(dynamicConfig, testConnectivity = false)
+                                repository.serverUrl = cleanServerUrl
+                                repository.mqttBrokerHost = host
+                                repository.mqttPort = mqttPort
+                            } catch (ue: Exception) {
+                                Log.e(TAG, "Error synthesizing fallback server config", ue)
+                            }
                         }
 
-                        callback(true, "Device enrolled successfully!")
+                        // 1. Automatically fetch full canonical policy profile via dedicated endpoint
+                        val policyHash = respMap["policyHash"]?.toString()
+                        fetchAndApplyPolicy(devId, currentHash = null) { policySuccess ->
+                            Log.i(TAG, "Initial enrollment policy fetch result: $policySuccess")
+                        }
+
+                        callback(true, "Device enrolled successfully as Fully Managed Device Owner!")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing enrollment response", e)
                         callback(true, "Enrolled with warning: ${e.message}")
@@ -148,9 +198,9 @@ class MdmApiClient(private val context: Context) {
     }
 
     fun uploadEvents(events: List<QueuedDeviceEventEntity>, callback: (Boolean, Int) -> Unit) {
-        val serverUrl = repository.serverUrl ?: return callback(false, 0)
-        val devId = repository.deviceId ?: return callback(false, 0)
-        val jwt = repository.deviceJwt ?: ""
+        val serverUrl = configProvider.getApiBaseUrl() ?: repository.serverUrl.takeIf { it.isNotBlank() } ?: return callback(false, 0)
+        val devId = repository.deviceId.takeIf { it.isNotBlank() } ?: return callback(false, 0)
+        val jwt = repository.deviceJwt
 
         val endpoint = "${serverUrl.trimEnd('/')}/api/v1/devices/$devId/events"
         val payloadEvents = events.map {
@@ -192,11 +242,18 @@ class MdmApiClient(private val context: Context) {
     }
 
     fun downloadApk(downloadUrl: String, destinationFile: File, callback: (Boolean, File?) -> Unit) {
-        val request = Request.Builder().url(downloadUrl).build()
+        val fullUrl = if (downloadUrl.startsWith("http://", ignoreCase = true) || downloadUrl.startsWith("https://", ignoreCase = true)) {
+            downloadUrl
+        } else {
+            val base = (configProvider.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
+            if (downloadUrl.startsWith("/")) "$base$downloadUrl" else "$base/$downloadUrl"
+        }
+
+        val request = Request.Builder().url(fullUrl).build()
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e(TAG, "Failed to download APK", e)
+                Log.e(TAG, "Failed to download APK from $fullUrl", e)
                 callback(false, null)
             }
 
@@ -223,7 +280,8 @@ class MdmApiClient(private val context: Context) {
 
     fun sendHeartbeat(deviceId: String, batteryLevel: Int, isCharging: Boolean) {
         if (deviceId.isBlank()) return
-        val serverUrl = repository.serverUrl.trimEnd('/')
+        val serverUrl = (configProvider.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
+        if (serverUrl.isBlank()) return
         val jwt = repository.deviceJwt
         val endpoint = "$serverUrl/api/v1/devices/$deviceId/heartbeat"
 
@@ -231,7 +289,6 @@ class MdmApiClient(private val context: Context) {
             "batteryLevel" to batteryLevel,
             "isCharging" to isCharging,
             "networkType" to "WIFI",
-            "lastKnownIp" to "127.0.0.1",
             "deviceTimestamp" to System.currentTimeMillis()
         )
         val body = gson.toJson(payload).toRequestBody("application/json".toMediaType())
@@ -244,10 +301,113 @@ class MdmApiClient(private val context: Context) {
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.w(TAG, "Heartbeat REST fallback failed: ${e.message}")
+                if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
+                    Log.i(TAG, "Attempting ADB reverse loopback heartbeat fallback to http://127.0.0.1:8080...")
+                    val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/devices/$deviceId/heartbeat"
+                    val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
+                    httpClient.newCall(fallbackReq).enqueue(object : Callback {
+                        override fun onFailure(c: Call, ex: IOException) {}
+                        override fun onResponse(c: Call, r: Response) { r.close() }
+                    })
+                }
             }
             override fun onResponse(call: Call, response: Response) {
                 response.close()
             }
         })
+    }
+
+    /**
+     * Canonical Policy Fetch & Application Pipeline.
+     * Hits dedicated GET /api/v1/policies/device/{deviceId} endpoint with ETag If-None-Match support.
+     * Used on enrollment, boot, reconnect, and OTA sync.
+     */
+    fun fetchAndApplyPolicy(
+        deviceId: String,
+        currentHash: String? = null,
+        callback: ((Boolean) -> Unit)? = null
+    ) {
+        if (deviceId.isBlank()) {
+            callback?.invoke(false)
+            return
+        }
+        val serverUrl = (configProvider.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
+        if (serverUrl.isBlank()) {
+            callback?.invoke(false)
+            return
+        }
+        val jwt = repository.deviceJwt
+        val endpoint = "$serverUrl/api/v1/policies/device/$deviceId"
+
+        val reqBuilder = Request.Builder()
+            .url(endpoint)
+            .get()
+
+        if (jwt.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $jwt")
+        }
+        if (!currentHash.isNullOrBlank()) {
+            reqBuilder.header("If-None-Match", "\"$currentHash\"")
+        }
+
+        val request = reqBuilder.build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w(TAG, "⚠️ Failed to fetch policy from $endpoint: ${e.message}")
+                if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
+                    Log.i(TAG, "Attempting ADB reverse loopback policy fetch from http://127.0.0.1:8080...")
+                    val fallbackReq = request.newBuilder().url("http://127.0.0.1:8080/api/v1/policies/device/$deviceId").build()
+                    httpClient.newCall(fallbackReq).enqueue(object : Callback {
+                        override fun onFailure(c: Call, ex: IOException) {
+                            callback?.invoke(false)
+                        }
+                        override fun onResponse(c: Call, r: Response) {
+                            handlePolicyResponse(r, callback)
+                        }
+                    })
+                    return
+                }
+                callback?.invoke(false)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                handlePolicyResponse(response, callback)
+            }
+        })
+    }
+
+    private fun handlePolicyResponse(response: Response, callback: ((Boolean) -> Unit)?) {
+        try {
+            if (response.code == 304) {
+                Log.i(TAG, "✓ Device policy is up to date (HTTP 304 - Not Modified).")
+                callback?.invoke(true)
+                return
+            }
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Server returned HTTP ${response.code} for policy fetch.")
+                callback?.invoke(false)
+                return
+            }
+            val body = response.body?.string() ?: return
+            val policyDto = gson.fromJson(body, Map::class.java)
+            val payloadJson = policyDto["payloadJson"]?.toString()
+            if (!payloadJson.isNullOrBlank() && payloadJson != "{}") {
+                val parsedPolicy = com.rrv.mdm.dpc.data.model.PolicyPayload.fromJson(payloadJson)
+                repository.saveActivePolicy(parsedPolicy)
+                val app = context.applicationContext as? com.rrv.mdm.dpc.RrvMdmApplication
+                app?.deviceManager?.applyPolicy(parsedPolicy, force = true)
+                com.rrv.mdm.dpc.util.NotificationHelper.showPolicyNotification(context, parsedPolicy)
+                Log.i(TAG, "🛡️ Canonical policy '${parsedPolicy.name}' fetched and applied successfully!")
+                callback?.invoke(true)
+            } else {
+                callback?.invoke(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error applying fetched policy", e)
+            callback?.invoke(false)
+        } finally {
+            response.close()
+        }
     }
 }

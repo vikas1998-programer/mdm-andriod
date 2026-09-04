@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import com.rrv.mdm.dpc.RrvMdmApplication
 import com.rrv.mdm.dpc.util.RrvLog
 
@@ -57,7 +58,7 @@ class AppEventPublisher : BroadcastReceiver() {
         RrvLog.i(TAG, "📦 Package event: $event pkg=$packageName")
 
         val app = context.applicationContext as? RrvMdmApplication ?: return
-        val mqttManager = app.mqttManager ?: return
+        val mqttManager = app.mqttManager
         val repository  = app.repository
 
         // Enforce Strict DEFAULT DENY for newly installed packages
@@ -84,7 +85,12 @@ class AppEventPublisher : BroadcastReceiver() {
 
         // Determine installer source
         val installerSource = try {
-            val installerPkg = context.packageManager.getInstallerPackageName(packageName)
+            @Suppress("DEPRECATION")
+            val installerPkg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.packageManager.getInstallSourceInfo(packageName).installingPackageName
+            } else {
+                context.packageManager.getInstallerPackageName(packageName)
+            }
             when {
                 installerPkg == null -> "SYSTEM"
                 installerPkg.contains("rrv.mdm") -> "MDM_SILENT_PUSH"
@@ -96,7 +102,13 @@ class AppEventPublisher : BroadcastReceiver() {
         // Get version info
         val (versionCode, versionName) = try {
             val info = context.packageManager.getPackageInfo(packageName, 0)
-            Pair(info.versionCode, info.versionName ?: "unknown")
+            val code = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                info.versionCode
+            }
+            Pair(code, info.versionName ?: "unknown")
         } catch (e: Exception) { Pair(0, "unknown") }
 
         // Get app title
