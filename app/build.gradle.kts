@@ -9,12 +9,25 @@ android {
     namespace = "com.rrv.mdm.dpc"
     compileSdk = 34
 
+    val serverHost = project.findProperty("SERVER_HOST") as? String ?: "169.58.239.251"
+    val apiPort = (project.findProperty("BACKEND_PORT") as? String)?.toIntOrNull() ?: 8085
+    val mqttPort = (project.findProperty("MQTT_PORT") as? String)?.toIntOrNull() ?: 7000
+    val mqttTlsPort = (project.findProperty("MQTT_TLS_PORT") as? String)?.toIntOrNull() ?: 7883
+    val portalPort = (project.findProperty("PORTAL_PORT") as? String)?.toIntOrNull() ?: 3000
+
     defaultConfig {
         applicationId = "com.rrv.mdm.dpc"
         minSdk = 28 // Android 9.0 (Pie) Enterprise baseline
         targetSdk = 34 // Android 14+ / 15
         versionCode = 100
         versionName = "1.0.0-PROD"
+
+        buildConfigField("String", "GLOBAL_SERVER_HOST", "\"$serverHost\"")
+        buildConfigField("int", "GLOBAL_API_PORT", "$apiPort")
+        buildConfigField("int", "GLOBAL_MQTT_PORT", "$mqttPort")
+        buildConfigField("int", "GLOBAL_MQTT_TLS_PORT", "$mqttTlsPort")
+        buildConfigField("int", "GLOBAL_PORTAL_PORT", "$portalPort")
+        buildConfigField("String", "GLOBAL_SERVER_URL", "\"http://$serverHost:$apiPort\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,6 +65,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     testOptions {

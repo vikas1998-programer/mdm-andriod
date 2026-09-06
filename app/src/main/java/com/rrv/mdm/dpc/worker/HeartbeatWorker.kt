@@ -82,8 +82,12 @@ class HeartbeatWorker(
             val storageFreeBytes = stat.availableBlocksLong * stat.blockSizeLong
             val storageTotalBytes = stat.blockCountLong * stat.blockSizeLong
 
-            val runtime = Runtime.getRuntime()
-            val ramFreeBytes = runtime.freeMemory()
+            val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            val memInfo = android.app.ActivityManager.MemoryInfo()
+            actManager?.getMemoryInfo(memInfo)
+            val ramFreeBytes = memInfo.availMem
+            val ramTotalBytes = memInfo.totalMem
+            val ramUsedBytes = ramTotalBytes - ramFreeBytes
 
             val networkType = getNetworkType()
             val lastKnownIp = getLocalIpAddress()
@@ -96,6 +100,8 @@ class HeartbeatWorker(
                   "storageFreeBytes": $storageFreeBytes,
                   "storageTotalBytes": $storageTotalBytes,
                   "ramFreeBytes": $ramFreeBytes,
+                  "ramTotalBytes": $ramTotalBytes,
+                  "ramUsedBytes": $ramUsedBytes,
                   "latitude": ${repository.lastLatitude},
                   "longitude": ${repository.lastLongitude},
                   "networkType": "$networkType",

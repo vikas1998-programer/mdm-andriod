@@ -318,7 +318,58 @@ class MdmApiClient(private val context: Context) {
     }
 
     /**
-     * Canonical Policy Fetch & Application Pipeline.
+     * Canonical Policy Fetch & Application Pipeline by Policy Profile ID.
+     * Hits GET /api/v1/policies/{policyId} with ETag If-None-Match support.
+     */
+    fun fetchAndApplyPolicyById(
+        policyId: String,
+        currentHash: String? = null,
+        callback: ((Boolean) -> Unit)? = null
+    ) {
+        if (policyId.isBlank()) {
+            callback?.invoke(false)
+            return
+        }
+        val serverUrl = (configProvider.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
+        if (serverUrl.isBlank()) {
+            callback?.invoke(false)
+            return
+        }
+        val jwt = repository.deviceJwt
+        val endpoint = "$serverUrl/api/v1/policies/$policyId"
+
+        val reqBuilder = Request.Builder()
+            .url(endpoint)
+            .get()
+
+        if (jwt.isNotBlank()) {
+            reqBuilder.header("Authorization", "Bearer $jwt")
+        }
+        if (!currentHash.isNullOrBlank()) {
+            reqBuilder.header("If-None-Match", "\"$currentHash\"")
+        }
+
+        val request = reqBuilder.build()
+
+        httpClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.w(TAG, "⚠️ Failed to fetch policy by ID $policyId: ${e.message}")
+                val devId = repository.deviceId
+                if (devId.isNotBlank()) {
+                    fetchAndApplyPolicy(devId, currentHash, callback)
+                } else {
+                    callback?.invoke(false)
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                handlePolicyResponse(response, callback)
+            }
+        })
+    }
+
+    /**
+     * Canonical Policy Fetch & Application Pipeline by Device ID.
      * Hits dedicated GET /api/v1/policies/device/{deviceId} endpoint with ETag If-None-Match support.
      * Used on enrollment, boot, reconnect, and OTA sync.
      */

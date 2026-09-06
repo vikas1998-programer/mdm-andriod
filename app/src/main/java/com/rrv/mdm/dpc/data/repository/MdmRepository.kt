@@ -31,15 +31,15 @@ class MdmRepository(private val context: Context) {
     }
 
     var serverUrl: String
-        get() = prefs.getString("KEY_SERVER_URL", "")?.takeIf { it.isNotBlank() } ?: "https://yang-neighbors-affair-disks.trycloudflare.com"
+        get() = prefs.getString("KEY_SERVER_URL", "")?.takeIf { it.isNotBlank() } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.SERVER_URL
         set(value) = prefs.edit().putString("KEY_SERVER_URL", value).apply()
 
     var mqttBrokerHost: String
-        get() = prefs.getString("KEY_MQTT_HOST", "")?.takeIf { it.isNotBlank() } ?: "127.0.0.1"
+        get() = prefs.getString("KEY_MQTT_HOST", "")?.takeIf { it.isNotBlank() } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.SERVER_HOST
         set(value) = prefs.edit().putString("KEY_MQTT_HOST", value).apply()
 
     var mqttPort: Int
-        get() = prefs.getInt("KEY_MQTT_PORT", 0).takeIf { it > 0 } ?: 1883
+        get() = prefs.getInt("KEY_MQTT_PORT", 0).takeIf { it > 0 } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_PORT
         set(value) = prefs.edit().putInt("KEY_MQTT_PORT", value).apply()
 
     var deviceId: String

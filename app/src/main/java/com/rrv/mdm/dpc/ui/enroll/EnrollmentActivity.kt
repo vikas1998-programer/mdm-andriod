@@ -29,7 +29,7 @@ class EnrollmentActivity : AppCompatActivity() {
         val cachedUrl = app.serverConfigProvider.getBootstrapServerUrl() 
             ?: app.serverConfigProvider.getApiBaseUrl() 
             ?: app.repository.serverUrl.takeIf { it.isNotBlank() }
-            ?: "https://yang-neighbors-affair-disks.trycloudflare.com"
+            ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.SERVER_URL
         val cachedToken = app.serverConfigProvider.getBootstrapEnrollmentToken() 
             ?: app.repository.enrollmentToken.takeIf { it.isNotBlank() }
             ?: "RRV-DEMO-2026"

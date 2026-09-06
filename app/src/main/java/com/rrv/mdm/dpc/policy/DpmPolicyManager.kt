@@ -223,6 +223,15 @@ class DpmPolicyManager(private val context: Context) {
                 } else {
                     dpm.clearUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
                 }
+
+                // Document & Photo Printing Restriction
+                if (policy.printingDisabled) {
+                    dpm.addUserRestriction(admin, UserManager.DISALLOW_PRINTING)
+                    Log.i(TAG, "🚫 Document & Photo Printing: DISALLOWED (UserManager.DISALLOW_PRINTING)")
+                } else {
+                    dpm.clearUserRestriction(admin, UserManager.DISALLOW_PRINTING)
+                    Log.i(TAG, "✓ Document & Photo Printing: ALLOWED")
+                }
             }
 
             // 7. Password Complexity
@@ -249,6 +258,14 @@ class DpmPolicyManager(private val context: Context) {
 
             // 9. Audio & Volume Restrictions
             try {
+                if (isDeviceOwner()) {
+                    if (policy.masterVolumeMuted) {
+                        dpm.setMasterVolumeMuted(admin, true)
+                    } else {
+                        dpm.setMasterVolumeMuted(admin, false)
+                    }
+                    dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME)
+                }
                 if (policy.masterVolumeMuted != true) {
                     policy.mediaVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_MUSIC, it) }
                     policy.alarmVolumePercent?.let { setStreamVolume(android.media.AudioManager.STREAM_ALARM, it) }
@@ -259,7 +276,6 @@ class DpmPolicyManager(private val context: Context) {
                     }
                 }
                 if (isDeviceOwner()) {
-                    dpm.setMasterVolumeMuted(admin, policy.masterVolumeMuted)
                     if (policy.volumeAdjustDisabled) {
                         dpm.addUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME)
                         Log.i(TAG, "🔒 Hardware Volume Keys: LOCKED (DISALLOW_ADJUST_VOLUME)")
@@ -425,13 +441,37 @@ class DpmPolicyManager(private val context: Context) {
     fun setStreamVolume(streamType: Int, percent: Int) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
-            val maxVol = audioManager.getStreamMaxVolume(streamType)
-            val minVol = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
-            } else 0
-            val targetVol = (minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
-            audioManager.setStreamVolume(streamType, targetVol, 0)
-            Log.i(TAG, "Audio stream $streamType volume set to $percent% ($targetVol/$maxVol)")
+            val wasLocked = if (isDeviceOwner()) {
+                val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
+                val locked = userManager?.hasUserRestriction(UserManager.DISALLOW_ADJUST_VOLUME) == true
+                if (locked) {
+                    try { dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
+                }
+                locked
+            } else false
+
+            try {
+                if (percent > 0) {
+                    if (isDeviceOwner()) {
+                        try { dpm.setMasterVolumeMuted(admin, false) } catch (_: Exception) {}
+                    }
+                    audioManager.adjustStreamVolume(streamType, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    if (streamType == android.media.AudioManager.STREAM_MUSIC) {
+                        audioManager.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    }
+                }
+                val maxVol = audioManager.getStreamMaxVolume(streamType)
+                val minVol = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
+                } else 0
+                val targetVol = Math.round(minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
+                audioManager.setStreamVolume(streamType, targetVol, 0)
+                Log.i(TAG, "Audio stream $streamType volume set to $percent% ($targetVol/$maxVol)")
+            } finally {
+                if (wasLocked && isDeviceOwner()) {
+                    try { dpm.addUserRestriction(admin, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to set audio stream $streamType volume: ${e.message}")
         }

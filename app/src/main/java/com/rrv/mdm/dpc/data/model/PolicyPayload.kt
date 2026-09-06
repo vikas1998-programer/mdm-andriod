@@ -18,6 +18,7 @@ data class PolicyPayload(
     @SerializedName("safeBootDisabled") val safeBootDisabled: Boolean = false,
     @SerializedName("developerOptionsDisabled") val developerOptionsDisabled: Boolean = false,
     @SerializedName("statusBarDisabled") val statusBarDisabled: Boolean = false,
+    @SerializedName("printingDisabled") val printingDisabled: Boolean = false,
 
     // Network Restrictions
     @SerializedName("tetheringDisabled") val tetheringDisabled: Boolean = false,
@@ -83,6 +84,7 @@ data class PolicyPayload(
                 var clipboardDlpDisabled = base.clipboardDlpDisabled
                 var appUninstallDisabled = base.appUninstallDisabled
                 var unknownSourcesDisabled = base.unknownSourcesDisabled
+                var printingDisabled = base.printingDisabled
 
                 // Check nested hardware block
                 val hw = root["hardware"] as? Map<*, *>
@@ -93,6 +95,7 @@ data class PolicyPayload(
                     (hw["bluetoothDisabled"] as? Boolean ?: hw["bluetooth_disabled"] as? Boolean)?.let { bluetoothDisabled = it }
                     (hw["sdCardDisabled"] as? Boolean ?: hw["external_media_disabled"] as? Boolean)?.let { sdCardDisabled = it }
                     (hw["microphoneDisabled"] as? Boolean ?: hw["microphone_disabled"] as? Boolean)?.let { microphoneDisabled = it }
+                    (hw["printingDisabled"] as? Boolean ?: hw["printing_disabled"] as? Boolean)?.let { printingDisabled = it }
                 }
 
                 // Check nested network block
@@ -117,6 +120,7 @@ data class PolicyPayload(
                 if (dlp != null) {
                     (dlp["crossProfileCopyPasteDisabled"] as? Boolean ?: dlp["clipboardDlpDisabled"] as? Boolean)?.let { clipboardDlpDisabled = it }
                     (dlp["usbMassStorageDisabled"] as? Boolean ?: dlp["external_media_disabled"] as? Boolean)?.let { sdCardDisabled = it }
+                    (dlp["printingDisabled"] as? Boolean ?: dlp["printing_disabled"] as? Boolean)?.let { printingDisabled = it }
                 }
 
                 // Check nested passcode block
@@ -145,13 +149,18 @@ data class PolicyPayload(
                 if (apps != null) {
                     for (item in apps) {
                         if (item is Map<*, *>) {
+                            val appId = item["appId"]?.toString() ?: item["app_id"]?.toString()
                             val pkg = item["packageName"]?.toString() ?: item["package_name"]?.toString() ?: ""
                             val title = item["title"]?.toString() ?: pkg
                             val installType = item["installType"]?.toString() ?: item["install_type"]?.toString() ?: "BLOCKED"
                             val iconUrl = item["iconUrl"]?.toString() ?: item["icon_url"]?.toString()
+                            val downloadUrl = item["downloadUrl"]?.toString() ?: item["download_url"]?.toString()
+                            val versionCode = (item["versionCode"] as? Number ?: item["version_code"] as? Number)?.toInt() ?: 1
+                            val versionName = item["versionName"]?.toString() ?: item["version_name"]?.toString() ?: "1.0"
+                            val sha256 = item["sha256"]?.toString() ?: item["sha256Hash"]?.toString() ?: item["sha256_hash"]?.toString()
                             val config = item["managedConfigJson"]?.toString() ?: item["managed_config_json"]?.toString()
                             if (pkg.isNotBlank()) {
-                                appList.add(ApplicationPolicy(pkg, title, iconUrl, installType.uppercase(), config))
+                                appList.add(ApplicationPolicy(appId, pkg, title, iconUrl, installType.uppercase(), downloadUrl, versionCode, versionName, sha256, config))
                             }
                         }
                     }
@@ -213,6 +222,7 @@ data class PolicyPayload(
                     clipboardDlpDisabled = clipboardDlpDisabled,
                     appUninstallDisabled = appUninstallDisabled,
                     unknownSourcesDisabled = unknownSourcesDisabled,
+                    printingDisabled = printingDisabled,
                     applications = if (apps != null || root.containsKey("applications")) appList else base.applications,
                     minPasswordLength = minPassLen,
                     maxFailedAttempts = maxAttempts,
@@ -235,10 +245,15 @@ data class PolicyPayload(
 }
 
 data class ApplicationPolicy(
+    @SerializedName("appId") val appId: String? = null,
     @SerializedName("packageName") val packageName: String = "",
     @SerializedName("title") val title: String = "",
     @SerializedName("iconUrl") val iconUrl: String? = null,
     @SerializedName("installType") val installType: String = "VISIBLE", // VISIBLE, HIDDEN, BLOCKED, FORCE_INSTALLED, AVAILABLE
+    @SerializedName("downloadUrl") val downloadUrl: String? = null,
+    @SerializedName("versionCode") val versionCode: Int = 1,
+    @SerializedName("versionName") val versionName: String = "1.0",
+    @SerializedName("sha256") val sha256: String? = null,
     @SerializedName("managedConfigJson") val managedConfigJson: String? = null
 )
 

@@ -16,6 +16,8 @@ data class DeviceTelemetryPayload(
     @SerializedName("freeStorageBytes") val freeStorageBytes: Long,
     @SerializedName("totalStorageBytes") val totalStorageBytes: Long,
     @SerializedName("freeRamBytes") val freeRamBytes: Long,
+    @SerializedName("totalRamBytes") val totalRamBytes: Long? = null,
+    @SerializedName("usedRamBytes") val usedRamBytes: Long? = null,
     @SerializedName("latitude") val latitude: Double?,
     @SerializedName("longitude") val longitude: Double?,
     @SerializedName("gpsAccuracy") val gpsAccuracy: Float?,

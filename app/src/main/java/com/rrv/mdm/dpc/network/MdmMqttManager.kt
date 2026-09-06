@@ -126,10 +126,10 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                         val uri = try { if (sUrl.isNotBlank()) java.net.URI(sUrl) else null } catch (_: Exception) { null }
                         val host = uri?.host ?: ""
                         if (host.contains("ngrok") || host.contains("trycloudflare") || host.contains("cloudflare") || host.isBlank()) {
-                            "tcp://127.0.0.1:1883"
+                            com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_TCP_URI
                         } else {
                             val isHttps = uri?.scheme?.equals("https", ignoreCase = true) == true
-                            val defaultPort = if (isHttps) 8883 else 1883
+                            val defaultPort = if (isHttps) com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_TLS_PORT else com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_PORT
                             if (isHttps) "ssl://$host:$defaultPort" else "tcp://$host:$defaultPort"
                         }
                     }
@@ -208,29 +208,46 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         onConnectJob = CoroutineScope(Dispatchers.IO).launch {
             delay(300L) // Ensure Paho internal client state transition completes
             if (!isConnected()) return@launch
-            val deviceId = getEffectiveDeviceId()
-            val realSerial = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Build.getSerial()
-                } else {
-                    @Suppress("DEPRECATION")
-                    Build.SERIAL
-                }
-            } catch (_: Exception) { "" }
+            val effectiveId = getEffectiveDeviceId()
+            val imei = getHardwareImei()
+            val serial = getHardwareSerial()
+            val androidId = getAndroidId()
+            val repoDevId = repository.deviceId.takeIf { it.isNotBlank() }
 
-            // 1. Subscribe to Dynamic Device-Specific Command Topics
-            subscribe("rrv/devices/$deviceId/commands", QOS_COMMANDS)
-            if (realSerial.isNotBlank() && realSerial != "unknown" && realSerial != deviceId) {
-                subscribe("rrv/devices/$realSerial/commands", QOS_COMMANDS)
+            // 1. Subscribe to Device Identification Hierarchy & Fleet-Wide Command Topics
+            val topicsToSubscribe = linkedSetOf<String>()
+            topicsToSubscribe.add("rrv/devices/$effectiveId/commands")
+            if (!imei.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$imei/commands")
             }
-            subscribe("rrv/devices/all/commands", QOS_COMMANDS)
+            if (!serial.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$serial/commands")
+            }
+            if (!repoDevId.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$repoDevId/commands")
+            }
+            if (!androidId.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$androidId/commands")
+            }
+            topicsToSubscribe.add("rrv/devices/all/commands")
+            topicsToSubscribe.add("rrv/broadcast/#")
+            topicsToSubscribe.add("rrv/commands/+")
 
-            // 2. Publish Online Status (Retained)
-            val statusTopic = "rrv/devices/$deviceId/status"
-            val onlinePayload = """{"status":"ONLINE","osVersion":"${Build.VERSION.RELEASE}","timestamp":${System.currentTimeMillis()}}"""
-            publish(statusTopic, onlinePayload, 1, true)
-            if (realSerial.isNotBlank() && realSerial != "unknown" && realSerial != deviceId) {
-                publish("rrv/devices/$realSerial/status", onlinePayload, 1, true)
+            for (topic in topicsToSubscribe) {
+                subscribe(topic, QOS_COMMANDS)
+            }
+
+            // 2. Publish Online Status (Retained) across primary and alias topics
+            val onlinePayload = """{"status":"ONLINE","osVersion":"${Build.VERSION.RELEASE}","imei":${imei?.let { "\"$it\"" } ?: "null"},"serial":${serial?.let { "\"$it\"" } ?: "null"},"timestamp":${System.currentTimeMillis()}}"""
+            publish("rrv/devices/$effectiveId/status", onlinePayload, 1, true)
+            if (!imei.isNullOrBlank() && imei != effectiveId) {
+                publish("rrv/devices/$imei/status", onlinePayload, 1, true)
+            }
+            if (!serial.isNullOrBlank() && serial != effectiveId) {
+                publish("rrv/devices/$serial/status", onlinePayload, 1, true)
+            }
+            if (!repoDevId.isNullOrBlank() && repoDevId != effectiveId) {
+                publish("rrv/devices/$repoDevId/status", onlinePayload, 1, true)
             }
 
             // 3. Publish Immediate Heartbeat & Application Inventory
@@ -350,25 +367,48 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     override fun messageArrived(topic: String?, message: MqttMessage?) {
         if (message == null || topic == null) return
         val payloadStr = String(message.payload, StandardCharsets.UTF_8)
-        RrvLog.mqtt("📥 Inbound MQTT signal on [$topic]: $payloadStr")
+        RrvLog.mqtt("⚡ Inbound MQTT command received on [$topic]: $payloadStr")
 
         try {
             val cmd = gson.fromJson(payloadStr, MqttCommandPayload::class.java)
 
-            // ── SENIOR ARCHITECT PATTERN: MQTT Signal + REST Payload Fetch ──────────
-            // MQTT carries only: { commandId, commandType } — ~150 bytes
-            // Full payload is fetched from REST: GET /api/v1/commands/{commandId}
-            // This keeps MQTT lean and avoids TooLongFrameException on broker side.
-            // ─────────────────────────────────────────────────────────────────────────
+            // Priority 1: If payloadJson is embedded directly, execute immediately with 0ms delay
             val hasInlinePayload = !cmd.payloadJson.isNullOrBlank() &&
                                    cmd.payloadJson != "{}" &&
                                    cmd.payloadJson != "null"
 
-            if (!hasInlinePayload && !cmd.commandId.isNullOrBlank()) {
-                // Fetch full payload from REST API
+            if (hasInlinePayload) {
+                RrvLog.i(TAG, "⚡ [INSTANT-EXEC] Executing '${cmd.commandType}' with inline payload (${cmd.payloadJson?.length}B)...")
+                handleInboundCommand(cmd, payloadStr)
+                return
+            }
+
+            // Priority 2: If root JSON object contains payload properties (e.g. title, message, newPin, policyId), wrap and execute
+            val rawMap = try { gson.fromJson(payloadStr, Map::class.java) } catch (_: Exception) { null }
+            val hasDirectFields = rawMap != null && (
+                rawMap.containsKey("title") || 
+                rawMap.containsKey("message") || 
+                rawMap.containsKey("newPin") || 
+                rawMap.containsKey("policyId") || 
+                rawMap.containsKey("packageName") ||
+                rawMap.containsKey("brightness") ||
+                rawMap.containsKey("volume") ||
+                rawMap.containsKey("durationSeconds") ||
+                rawMap.containsKey("timeoutSeconds")
+            )
+
+            if (hasDirectFields) {
+                RrvLog.i(TAG, "⚡ [INSTANT-EXEC] Executing '${cmd.commandType}' with direct properties from MQTT packet...")
+                val constructedCmd = cmd.copy(payloadJson = payloadStr)
+                handleInboundCommand(constructedCmd, payloadStr)
+                return
+            }
+
+            // Priority 3: Fallback to REST fetch if payload was omitted due to size
+            if (!cmd.commandId.isNullOrBlank()) {
+                RrvLog.i(TAG, "🔍 [SIGNAL-FETCH] Fetching full payload via REST for '${cmd.commandType}' [${cmd.commandId}]...")
                 fetchCommandAndExecute(cmd.commandId, cmd.commandType)
             } else {
-                // Legacy path: inline payload present (backward compatible)
                 handleInboundCommand(cmd, payloadStr)
             }
         } catch (e: Exception) {
@@ -469,6 +509,13 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val freeStorage = stat.availableBlocksLong * stat.blockSizeLong
         val totalStorage = stat.blockCountLong * stat.blockSizeLong
 
+        val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val memInfo = android.app.ActivityManager.MemoryInfo()
+        actManager?.getMemoryInfo(memInfo)
+        val freeRam = memInfo.availMem
+        val totalRam = memInfo.totalMem
+        val usedRam = totalRam - freeRam
+
         // Real WiFi SSID
         val wifiSsid = try {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
@@ -512,10 +559,14 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val lng = resolvedLoc?.longitude ?: repository.lastLongitude.takeIf { it != 0.0 } ?: 0.0
         val gpsAccuracy = resolvedLoc?.accuracy ?: 0.0f
 
+        val effectiveId = getEffectiveDeviceId()
+        val imei = getHardwareImei()
+        val serial = getHardwareSerial() ?: @Suppress("DEPRECATION") (Build.SERIAL ?: "UNKNOWN_SERIAL")
+
         val payload = DeviceTelemetryPayload(
-            deviceId = deviceId,
-            serialNumber = @Suppress("DEPRECATION") (Build.SERIAL ?: "UNKNOWN_SERIAL"),
-            imei = null,
+            deviceId = effectiveId,
+            serialNumber = serial,
+            imei = imei,
             manufacturer = Build.MANUFACTURER,
             model = Build.MODEL,
             osVersion = Build.VERSION.RELEASE,
@@ -525,7 +576,9 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             batteryTemperature = batteryTemp,
             freeStorageBytes = freeStorage,
             totalStorageBytes = totalStorage,
-            freeRamBytes = Runtime.getRuntime().freeMemory(),
+            freeRamBytes = freeRam,
+            totalRamBytes = totalRam,
+            usedRamBytes = usedRam,
             latitude = lat,
             longitude = lng,
             gpsAccuracy = gpsAccuracy,
@@ -537,18 +590,26 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         )
 
         val jsonStr = gson.toJson(payload)
-        publish("rrv/devices/$deviceId/telemetry", jsonStr, QOS_TELEMETRY, false)
-        publish("rrv/devices/$deviceId/heartbeat", jsonStr, QOS_TELEMETRY, false)
+        publish("rrv/devices/$effectiveId/telemetry", jsonStr, QOS_TELEMETRY, false)
+        publish("rrv/devices/$effectiveId/heartbeat", jsonStr, QOS_TELEMETRY, false)
 
-        val realSerial = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else @Suppress("DEPRECATION") Build.SERIAL
-        } catch (_: Exception) { "" }
-
-        if (realSerial.isNotBlank() && realSerial != "unknown" && realSerial != deviceId) {
-            publish("rrv/devices/$realSerial/telemetry", jsonStr, QOS_TELEMETRY, false)
-            publish("rrv/devices/$realSerial/heartbeat", jsonStr, QOS_TELEMETRY, false)
+        if (!imei.isNullOrBlank() && imei != effectiveId) {
+            publish("rrv/devices/$imei/telemetry", jsonStr, QOS_TELEMETRY, false)
+            publish("rrv/devices/$imei/heartbeat", jsonStr, QOS_TELEMETRY, false)
         }
-        RrvLog.d(TAG, "📡 Outbound telemetry streamed: Bat=$batteryPct%, Charging=$isCharging, WiFi=$wifiSsid, Carrier=$carrierName")
+
+        if (serial.isNotBlank() && serial != "UNKNOWN_SERIAL" && serial != effectiveId) {
+            publish("rrv/devices/$serial/telemetry", jsonStr, QOS_TELEMETRY, false)
+            publish("rrv/devices/$serial/heartbeat", jsonStr, QOS_TELEMETRY, false)
+        }
+
+        val repoDevId = repository.deviceId
+        if (repoDevId.isNotBlank() && repoDevId != effectiveId && repoDevId != imei && repoDevId != serial) {
+            publish("rrv/devices/$repoDevId/telemetry", jsonStr, QOS_TELEMETRY, false)
+            publish("rrv/devices/$repoDevId/heartbeat", jsonStr, QOS_TELEMETRY, false)
+        }
+
+        RrvLog.d(TAG, "📡 Outbound telemetry streamed: Bat=$batteryPct%, Charging=$isCharging, WiFi=$wifiSsid, Carrier=$carrierName, IMEI=$imei, Serial=$serial")
     }
 
 
@@ -703,31 +764,83 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         }
     }
 
-    private fun getEffectiveDeviceId(): String {
-        var id = repository.deviceId
-        if (id.isBlank()) {
-            val realSerial = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Build.getSerial()
-                } else {
-                    @Suppress("DEPRECATION")
-                    Build.SERIAL
+    fun getHardwareImei(): String? {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager ?: return null
+            val imei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    tm.imei ?: tm.getImei(0)
+                } catch (_: Exception) {
+                    try { tm.deviceId } catch (_: Exception) { null }
                 }
-            } catch (_: Exception) { "" }
-
-            val androidId = try {
-                android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-            } catch (_: Exception) { "" }
-
-            id = if (realSerial.isNotBlank() && realSerial != "unknown") {
-                realSerial
-            } else if (androidId.isNotBlank()) {
-                androidId
             } else {
-                "DEV-" + Build.MODEL.replace(" ", "-") + "-" + Build.ID.take(6)
+                @Suppress("DEPRECATION")
+                try { tm.deviceId } catch (_: Exception) { null }
             }
-            repository.deviceId = id
+            imei?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) && it.matches(Regex("^[0-9A-Fa-f]{14,18}$")) }
+        } catch (_: Exception) {
+            null
         }
-        return id
+    }
+
+    fun getHardwareSerial(): String? {
+        return try {
+            val serial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try { Build.getSerial() } catch (_: Exception) { @Suppress("DEPRECATION") Build.SERIAL }
+            } else {
+                @Suppress("DEPRECATION") Build.SERIAL
+            }
+            serial?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun getAndroidId(): String? {
+        return try {
+            android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+                ?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Primary Device Identifier Hierarchy for MQTT:
+     * 1. Hardware IMEI (Cellular/telephony primary identifier)
+     * 2. Hardware Serial Number (Wi-Fi / non-telephony primary fallback)
+     * 3. Enrolled Backend Device ID (if already assigned)
+     * 4. Android ID
+     * 5. Fallback DEV-{MODEL}-{ID}
+     */
+    fun getEffectiveDeviceId(): String {
+        // Priority 1: Hardware IMEI
+        val imei = getHardwareImei()
+        if (!imei.isNullOrBlank()) {
+            return imei
+        }
+
+        // Priority 2: Hardware Serial Number
+        val serial = getHardwareSerial()
+        if (!serial.isNullOrBlank()) {
+            return serial
+        }
+
+        // Priority 3: Enrolled Backend Device ID
+        val repoId = repository.deviceId
+        if (repoId.isNotBlank() && repoId != "unknown") {
+            return repoId
+        }
+
+        // Priority 4: Android ID
+        val androidId = getAndroidId()
+        if (!androidId.isNullOrBlank()) {
+            return androidId
+        }
+
+        // Priority 5: Fallback Hardware Fingerprint
+        val fallback = "DEV-" + Build.MODEL.replace(" ", "-") + "-" + Build.ID.take(6)
+        repository.deviceId = fallback
+        return fallback
     }
 }

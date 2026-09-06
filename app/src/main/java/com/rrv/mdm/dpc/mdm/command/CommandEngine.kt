@@ -84,7 +84,7 @@ class InstallApplicationExecutor : CommandExecutor {
         val gson = Gson()
         val map = try { gson.fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
         val packageName = map?.get("packageName")?.toString() ?: ""
-        val downloadUrl = map?.get("downloadUrl")?.toString() ?: ""
+        var downloadUrl = map?.get("downloadUrl")?.toString() ?: ""
         val sha256 = map?.get("sha256")?.toString() ?: ""
         val versionCode = (map?.get("versionCode") as? Number)?.toInt() ?: 1
         val versionName = map?.get("versionName")?.toString() ?: "1.0"
@@ -92,8 +92,17 @@ class InstallApplicationExecutor : CommandExecutor {
         val appConfigJson = map?.get("appConfigJson")?.toString() ?: "{}"
         val appId = map?.get("appId")?.toString() ?: ""
 
-        if (packageName.isBlank() || downloadUrl.isBlank()) {
-            return ExecutionResult(false, "Missing packageName or downloadUrl in payload.")
+        if (packageName.isBlank() && appId.isBlank()) {
+            return ExecutionResult(false, "Missing packageName or appId in payload.")
+        }
+
+        // Lightweight REST endpoint fallback if downloadUrl wasn't explicitly populated
+        if (downloadUrl.isBlank() && appId.isNotBlank()) {
+            downloadUrl = "/api/v1/apps/$appId/download"
+        }
+
+        if (downloadUrl.isBlank()) {
+            return ExecutionResult(false, "Missing downloadUrl in payload.")
         }
 
         ApkDownloadWorker.enqueue(
@@ -122,8 +131,14 @@ class UninstallApplicationExecutor : CommandExecutor {
 class PolicyUpdateExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
-        if (command.payloadJson.isNotBlank() && command.payloadJson != "{}") {
-            val parsed = PolicyPayload.fromJson(command.payloadJson)
+        val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
+        val configurationId = map?.get("configurationId")?.toString() ?: map?.get("policyId")?.toString()
+        val policyHash = map?.get("policyHash")?.toString()
+        val rawPayloadJson = map?.get("payloadJson")?.toString()
+
+        // If legacy inline payload contains full policy structure
+        if (!rawPayloadJson.isNullOrBlank() && rawPayloadJson != "{}" && rawPayloadJson.contains("name")) {
+            val parsed = PolicyPayload.fromJson(rawPayloadJson)
             app.repository.saveActivePolicy(parsed)
             app.deviceManager.applyPolicy(parsed, force = true)
             NotificationHelper.showPolicyNotification(context, parsed)
@@ -131,22 +146,29 @@ class PolicyUpdateExecutor : CommandExecutor {
             return ExecutionResult(true, "Policy profile '${parsed.name}' enforced successfully.")
         }
 
-        // Canonical fallback: fetch device policy directly from server endpoint
+        // Lightweight Trigger Signal via MQTT -> Fetch full policy payload from REST API
         val deviceId = app.repository.deviceId.ifBlank {
             android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
         }
         val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        app.apiClient.fetchAndApplyPolicy(deviceId) { success ->
-            deferred.complete(success)
+        if (!configurationId.isNullOrBlank()) {
+            app.apiClient.fetchAndApplyPolicyById(configurationId, policyHash) { success ->
+                deferred.complete(success)
+            }
+        } else {
+            app.apiClient.fetchAndApplyPolicy(deviceId, policyHash) { success ->
+                deferred.complete(success)
+            }
         }
+
         val ok = try {
-            kotlinx.coroutines.withTimeout(5000L) { deferred.await() }
+            kotlinx.coroutines.withTimeout(15000L) { deferred.await() }
         } catch (_: Exception) { false }
 
         return if (ok) {
-            ExecutionResult(true, "Policy fetched from server and enforced successfully.")
+            ExecutionResult(true, "Policy profile fetched via REST API and enforced successfully.")
         } else {
-            ExecutionResult(true, "Policy signal processed.")
+            ExecutionResult(true, "Policy trigger processed.")
         }
     }
 }
@@ -306,9 +328,13 @@ class SetVolumeExecutor : CommandExecutor {
         val lockAdjust = map?.get("volumeAdjustDisabled") as? Boolean
             ?: map?.get("lockVolume") as? Boolean
             ?: map?.get("volumeLocked") as? Boolean
-            ?: true // Default to LOCKED so device user cannot alter admin-configured volume
 
-        // 1. Adjust stream levels FIRST before applying hardware button restrictions
+        // 1. If unmuting or setting positive volume, un-mute master first
+        if (muted == false || (muted == null && (mediaVol != null && mediaVol > 0))) {
+            app.deviceManager.setMasterVolumeMuted(false)
+        }
+
+        // 2. Adjust stream levels (setStreamVolumePercent handles lifting restrictions temporarily)
         if (muted != true) {
             mediaVol?.let {
                 app.deviceManager.setStreamVolumePercent(android.media.AudioManager.STREAM_MUSIC, it)
@@ -323,13 +349,17 @@ class SetVolumeExecutor : CommandExecutor {
             }
         }
 
-        // 2. Apply Master Volume Mute
-        muted?.let { app.deviceManager.setMasterVolumeMuted(it) }
+        // 3. Apply Master Volume Mute
+        if (muted == true) {
+            app.deviceManager.setMasterVolumeMuted(true)
+        }
 
-        // 3. Apply Hardware Volume Buttons Restriction (DISALLOW_ADJUST_VOLUME)
-        lockAdjust?.let { app.deviceManager.setVolumeAdjustDisabled(it) }
+        // 4. Apply Hardware Volume Buttons Restriction (DISALLOW_ADJUST_VOLUME)
+        if (lockAdjust != null) {
+            app.deviceManager.setVolumeAdjustDisabled(lockAdjust)
+        }
 
-        // 4. Update cached active policy so watchdog preserves this state
+        // 5. Update cached active policy so watchdog preserves this state
         try {
             val currentPolicy = app.repository.getActivePolicy()
             val updatedPolicy = currentPolicy.copy(

@@ -192,14 +192,20 @@ class DeviceManagementManager(private val context: Context) {
 
                 // 6. Audio & Volume Level Governance
                 if (!policy.masterVolumeMuted) {
+                    setMasterVolumeMuted(false)
+                    if (isDeviceOwner()) {
+                        dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME)
+                    }
                     policy.mediaVolumePercent?.let { setStreamVolumePercent(android.media.AudioManager.STREAM_MUSIC, it) }
                     policy.alarmVolumePercent?.let { setStreamVolumePercent(android.media.AudioManager.STREAM_ALARM, it) }
                     policy.ringVolumePercent?.let {
                         setStreamVolumePercent(android.media.AudioManager.STREAM_RING, it)
                         setStreamVolumePercent(android.media.AudioManager.STREAM_NOTIFICATION, it)
+                        setStreamVolumePercent(android.media.AudioManager.STREAM_SYSTEM, it)
                     }
+                } else {
+                    setMasterVolumeMuted(true)
                 }
-                setMasterVolumeMuted(policy.masterVolumeMuted)
                 setVolumeAdjustDisabled(policy.volumeAdjustDisabled)
 
                 // 7. Ensure Home Launcher is registered
@@ -331,6 +337,49 @@ class DeviceManagementManager(private val context: Context) {
                     )
                 }
 
+                // 11. Auto-Download and Silently Install Mandatory/Force-Installed Apps via REST API
+                for (appPolicy in policy.applications) {
+                    val isAutoInstall = appPolicy.installType.uppercase() in listOf(
+                        "FORCE_INSTALLED", "MANDATORY_SILENT", "MANAGED_SILENT", "AUTO_INSTALL", "MANDATORY", "INSTALL", "REQUIRED"
+                    )
+                    if (!isAutoInstall || appPolicy.packageName.isBlank() || appPolicy.packageName == context.packageName) continue
+
+                    val isInstalledAndUpToDate = try {
+                        val pInfo = pm.getPackageInfo(appPolicy.packageName, 0)
+                        val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            pInfo.longVersionCode.toInt()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            pInfo.versionCode
+                        }
+                        installedVersion >= appPolicy.versionCode
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                    if (!isInstalledAndUpToDate) {
+                        val targetDownloadUrl = appPolicy.downloadUrl.takeIf { !it.isNullOrBlank() }
+                            ?: if (!appPolicy.appId.isNullOrBlank()) "/api/v1/apps/${appPolicy.appId}/download" else ""
+
+                        if (targetDownloadUrl.isNotBlank()) {
+                            RrvLog.i(TAG, "📦 Auto-enqueuing silent installation for ${appPolicy.packageName} (v${appPolicy.versionCode}) from policy.")
+                            val cmdId = "policy-app-${appPolicy.packageName}-${appPolicy.versionCode}-${System.currentTimeMillis()}"
+                            com.rrv.mdm.dpc.worker.ApkDownloadWorker.enqueue(
+                                context,
+                                cmdId,
+                                appPolicy.appId ?: "",
+                                appPolicy.packageName,
+                                appPolicy.title.ifBlank { appPolicy.packageName },
+                                targetDownloadUrl,
+                                appPolicy.sha256 ?: "",
+                                appPolicy.versionCode,
+                                appPolicy.versionName,
+                                appPolicy.managedConfigJson ?: "{}"
+                            )
+                        }
+                    }
+                }
+
                 RrvLog.i(TAG, "🛡️ Zero-Trust App Governance: $allowedCount apps ALLOWED/VISIBLE, $blockedCount apps BLOCKED/HIDDEN.")
                 RrvLog.i(TAG, "✅ Zero-Trust Policy [${policy.name}] successfully applied via DPM.")
             } catch (e: Exception) {
@@ -439,17 +488,37 @@ class DeviceManagementManager(private val context: Context) {
     fun setStreamVolumePercent(streamType: Int, percent: Int) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
-            if (percent > 0) {
-                audioManager.adjustStreamVolume(streamType, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                if (streamType == android.media.AudioManager.STREAM_MUSIC) {
-                    audioManager.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0)
+            val wasLocked = if (isDeviceOwner()) {
+                val userManager = context.getSystemService(Context.USER_SERVICE) as? UserManager
+                val locked = userManager?.hasUserRestriction(UserManager.DISALLOW_ADJUST_VOLUME) == true
+                if (locked) {
+                    try { dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
+                }
+                locked
+            } else false
+
+            try {
+                if (percent > 0) {
+                    if (isDeviceOwner()) {
+                        try { dpm.setMasterVolumeMuted(adminComponent, false) } catch (_: Exception) {}
+                    }
+                    audioManager.adjustStreamVolume(streamType, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    if (streamType == android.media.AudioManager.STREAM_MUSIC) {
+                        audioManager.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    }
+                }
+                val maxVol = audioManager.getStreamMaxVolume(streamType)
+                val minVol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
+                } else 0
+                val target = Math.round(minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
+                audioManager.setStreamVolume(streamType, target, 0)
+                RrvLog.i(TAG, "🔊 Audio stream $streamType volume set to $percent% (level $target/$maxVol)")
+            } finally {
+                if (wasLocked && isDeviceOwner()) {
+                    try { dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
                 }
             }
-            val maxVol = audioManager.getStreamMaxVolume(streamType)
-            val minVol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) audioManager.getStreamMinVolume(streamType) else 0
-            val target = (minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
-            audioManager.setStreamVolume(streamType, target, 0)
-            RrvLog.i(TAG, "🔊 Audio stream $streamType volume set to $percent% (level $target/$maxVol)")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to set audio stream $streamType volume to $percent%", e)
         }
