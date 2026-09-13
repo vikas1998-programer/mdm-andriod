@@ -75,6 +75,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
             val serverUrl = extras.getString("server_url") ?: extras.getString("api_base_url")
             val token = extras.getString("enroll_token") ?: extras.getString("enrollment_token")
             val orgId = extras.getString("org_id")
+            val policyId = extras.getString("policy_id") ?: extras.getString("configuration_id")
 
             if (!serverUrl.isNullOrBlank()) {
                 app.serverConfigProvider.saveBootstrap(
@@ -89,7 +90,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
             if (!token.isNullOrBlank()) {
                 app.repository.enrollmentToken = token
             }
-            Log.i(TAG, "Provisioning bundle parsed: Server = $serverUrl")
+            Log.i(TAG, "Provisioning bundle parsed: Server = $serverUrl, Policy = $policyId")
 
             if (!serverUrl.isNullOrBlank() && !token.isNullOrBlank()) {
                 app.apiClient.enrollDevice(serverUrl, token) { success, message ->

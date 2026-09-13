@@ -1,6 +1,7 @@
 package com.rrv.mdm.dpc.mdm.device
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -52,9 +53,93 @@ class DeviceManagementManager(private val context: Context) {
 
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     val adminComponent = ComponentName(context, RrvDeviceAdminReceiver::class.java)
+    val admin: ComponentName get() = adminComponent
+    val devicePolicyManager: DevicePolicyManager get() = dpm
 
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
     fun isAdminActive(): Boolean = dpm.isAdminActive(adminComponent)
+
+    /**
+     * Programmatically grant all required runtime permissions for the MDM DPC app.
+     */
+    fun grantDpcRuntimePermissions() {
+        if (!isDeviceOwner()) return
+        val permissions = listOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION,
+            android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+            android.Manifest.permission.POST_NOTIFICATIONS,
+            android.Manifest.permission.READ_PHONE_STATE,
+            android.Manifest.permission.BLUETOOTH_CONNECT,
+            android.Manifest.permission.ACCESS_NOTIFICATION_POLICY,
+            android.Manifest.permission.WRITE_SETTINGS
+        )
+        for (perm in permissions) {
+            try {
+                dpm.setPermissionGrantState(adminComponent, context.packageName, perm, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
+            } catch (e: Exception) {
+                RrvLog.w(TAG, "Could not auto-grant DPC permission $perm: ${e.message}")
+            }
+        }
+        try {
+            dpm.setPermissionPolicy(adminComponent, DevicePolicyManager.PERMISSION_POLICY_AUTO_GRANT)
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Could not set auto-grant permission policy: ${e.message}")
+        }
+
+        // Auto-grant AppOps for WRITE_SETTINGS & SYSTEM_ALERT_WINDOW via reflection
+        try {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager
+            if (appOps != null) {
+                val uid = context.packageManager.getApplicationInfo(context.packageName, 0).uid
+                val setMode = appOps.javaClass.getMethod("setMode", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, String::class.java, Int::class.javaPrimitiveType)
+                // OP_WRITE_SETTINGS = 23, OP_SYSTEM_ALERT_WINDOW = 24
+                setMode.invoke(appOps, 23, uid, context.packageName, android.app.AppOpsManager.MODE_ALLOWED)
+                setMode.invoke(appOps, 24, uid, context.packageName, android.app.AppOpsManager.MODE_ALLOWED)
+                RrvLog.i(TAG, "🛡️ MDM DPC AppOps granted (WRITE_SETTINGS & SYSTEM_ALERT_WINDOW)")
+            }
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Could not invoke AppOpsManager.setMode: ${e.message}")
+        }
+    }
+
+    /**
+     * Baseline lockdown on device enrollment or system boot.
+     * Enforces anti-uninstall, anti-factory reset, and binds the enterprise launcher.
+     */
+    fun enforceBaselineSecurity() {
+        if (!isAdminActive()) return
+        try {
+            if (isDeviceOwner()) {
+                // 0. Auto-grant all runtime permissions to MDM DPC
+                grantDpcRuntimePermissions()
+
+                // 1. Prevent uninstalling or clearing MDM
+                try {
+                    dpm.setUninstallBlocked(adminComponent, context.packageName, true)
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "Could not set uninstall blocked: ${e.message}")
+                }
+
+                // 2. Lock down system tamper vectors
+                setUserRestriction(UserManager.DISALLOW_FACTORY_RESET, true)
+                setUserRestriction(UserManager.DISALLOW_SAFE_BOOT, true)
+                setUserRestriction(UserManager.DISALLOW_ADD_USER, true)
+                setUserRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS, true)
+                setUserRestriction(UserManager.DISALLOW_UNINSTALL_APPS, true)
+
+                // 3. Set persistent enterprise home launcher
+                setAsDefaultHomeLauncher()
+
+                // Keep USB debugging accessible for enterprise ADB diagnostics
+                dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
+                dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER)
+                RrvLog.i(TAG, "✅ Baseline Device Owner security enforced: Anti-Uninstall, Anti-Exit, Safe Boot & Home Lock.")
+            }
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to apply baseline restrictions", e)
+        }
+    }
 
     /**
      * Lock the physical device screen immediately.
@@ -127,6 +212,70 @@ class DeviceManagementManager(private val context: Context) {
         }
     }
 
+    /**
+     * Clear persistent preferred Home Activity.
+     */
+    fun clearDefaultHomeLauncher() {
+        if (!isDeviceOwner()) return
+        try {
+            dpm.clearPackagePersistentPreferredActivities(adminComponent, context.packageName)
+            RrvLog.i(TAG, "✓ Cleared default Home launcher")
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to clear default home launcher", e)
+        }
+    }
+
+    /**
+     * Configure LockTask whitelist for COSU Kiosk mode.
+     */
+    fun setupKioskPackages(packages: List<String>, allowSystemInfo: Boolean = true, allowNotifications: Boolean = false) {
+        if (!isDeviceOwner()) return
+        try {
+            val allWhitelisted = (packages + context.packageName).distinct().toTypedArray()
+            dpm.setLockTaskPackages(adminComponent, allWhitelisted)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                var features = DevicePolicyManager.LOCK_TASK_FEATURE_HOME or DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW
+                if (allowSystemInfo) {
+                    features = features or DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+                }
+                if (allowNotifications) {
+                    features = features or DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS
+                }
+                dpm.setLockTaskFeatures(adminComponent, features)
+            }
+            RrvLog.i(TAG, "Kiosk LockTask packages configured: ${allWhitelisted.joinToString()}")
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to set LockTask packages", e)
+        }
+    }
+
+    /**
+     * Pin the activity into LockTask mode.
+     */
+    fun startKioskLock(activity: Activity) {
+        try {
+            RrvLog.i(TAG, "Pinning activity ${activity.localClassName} into LockTask Mode...")
+            setAsDefaultHomeLauncher()
+            setupKioskPackages(listOf(context.packageName))
+            activity.startLockTask()
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Could not enter LockTask mode", e)
+        }
+    }
+
+    /**
+     * Stop and unpin LockTask mode.
+     */
+    fun stopKioskLock(activity: Activity) {
+        try {
+            RrvLog.i(TAG, "Stopping LockTask Mode...")
+            activity.stopLockTask()
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Could not stop LockTask mode", e)
+        }
+    }
+
     @Volatile
     private var lastAppliedPolicyVersion: String? = null
 
@@ -154,16 +303,19 @@ class DeviceManagementManager(private val context: Context) {
                 dpm.setScreenCaptureDisabled(adminComponent, policy.screenCaptureDisabled)
                 setUserRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.usbDataTransferDisabled)
                 setUserRestriction(UserManager.DISALLOW_BLUETOOTH, policy.bluetoothDisabled)
+                setUserRestriction(UserManager.DISALLOW_CONFIG_BLUETOOTH, policy.bluetoothDisabled)
                 setUserRestriction(UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA, policy.sdCardDisabled)
                 setUserRestriction(UserManager.DISALLOW_UNMUTE_MICROPHONE, policy.microphoneDisabled)
+                (context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager)?.isMicrophoneMute = policy.microphoneDisabled
 
-                // 2. Network Restrictions
+                // 2. Network Restrictions & Corporate Wi-Fi Governance
                 setUserRestriction(UserManager.DISALLOW_CONFIG_WIFI, policy.wifiConfigLock)
                 setUserRestriction(UserManager.DISALLOW_CONFIG_TETHERING, policy.tetheringDisabled)
                 setUserRestriction(UserManager.DISALLOW_DATA_ROAMING, policy.dataRoamingDisabled)
                 setUserRestriction(UserManager.DISALLOW_AIRPLANE_MODE, policy.airplaneModeDisabled)
+                configureCorporateWifi(policy)
 
-                // 3. Anti-Tamper System Controls
+                // 3. Anti-Tamper & Security System Controls
                 setUserRestriction(UserManager.DISALLOW_FACTORY_RESET, policy.factoryResetDisabled)
                 setUserRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.safeBootDisabled)
                 setUserRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES, policy.developerOptionsDisabled)
@@ -171,7 +323,20 @@ class DeviceManagementManager(private val context: Context) {
                 setUserRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS, true)
                 setUserRestriction(UserManager.DISALLOW_UNINSTALL_APPS, policy.appUninstallDisabled)
                 setUserRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.unknownSourcesDisabled)
+                setUserRestriction(UserManager.DISALLOW_PRINTING, policy.printingDisabled)
+                setUserRestriction(UserManager.DISALLOW_CROSS_PROFILE_COPY_PASTE, policy.clipboardDlpDisabled)
                 setUserRestriction(UserManager.DISALLOW_APPS_CONTROL, true) // Block Settings -> Apps bypass/modifications
+
+                // 3.5 Password Complexity Governance
+                if (policy.minPasswordLength > 0) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        dpm.setPasswordQuality(adminComponent, DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX)
+                        @Suppress("DEPRECATION")
+                        dpm.setPasswordMinimumLength(adminComponent, policy.minPasswordLength)
+                        dpm.setMaximumFailedPasswordsForWipe(adminComponent, policy.maxFailedAttempts)
+                    } catch (_: Exception) {}
+                }
 
                 // 4. Anti-Uninstall MDM
                 dpm.setUninstallBlocked(adminComponent, context.packageName, true)
@@ -189,13 +354,13 @@ class DeviceManagementManager(private val context: Context) {
                 if (policy.screenBrightnessPercent != null && !policy.autoBrightnessEnabled) {
                     setScreenBrightness(policy.screenBrightnessPercent)
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    setUserRestriction(UserManager.DISALLOW_CONFIG_BRIGHTNESS, true)
+                }
 
                 // 6. Audio & Volume Level Governance
                 if (!policy.masterVolumeMuted) {
                     setMasterVolumeMuted(false)
-                    if (isDeviceOwner()) {
-                        dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME)
-                    }
                     policy.mediaVolumePercent?.let { setStreamVolumePercent(android.media.AudioManager.STREAM_MUSIC, it) }
                     policy.alarmVolumePercent?.let { setStreamVolumePercent(android.media.AudioManager.STREAM_ALARM, it) }
                     policy.ringVolumePercent?.let {
@@ -206,7 +371,8 @@ class DeviceManagementManager(private val context: Context) {
                 } else {
                     setMasterVolumeMuted(true)
                 }
-                setVolumeAdjustDisabled(policy.volumeAdjustDisabled)
+                val volumeLocked = policy.volumeAdjustDisabled || policy.masterVolumeMuted
+                setVolumeAdjustDisabled(volumeLocked)
 
                 // 7. Ensure Home Launcher is registered
                 setAsDefaultHomeLauncher()
@@ -226,15 +392,27 @@ class DeviceManagementManager(private val context: Context) {
                     .map { it.packageName }
                     .toSet()
 
+                val explicitlyHidden = policy.applications
+                    .filter { it.installType.uppercase() in listOf("HIDE", "HIDDEN", "DISABLED") }
+                    .map { it.packageName }
+                    .toSet()
+
+                val explicitlyBlocked = policy.applications
+                    .filter { it.installType.uppercase() in listOf("BLOCK", "BLOCKED", "RESTRICTED", "UNINSTALL", "REMOVED") }
+                    .map { it.packageName }
+                    .toSet()
+
                 val explicitlyUninstalled = policy.applications
                     .filter { it.installType.uppercase() in listOf("UNINSTALL", "REMOVED") }
                     .map { it.packageName }
                     .toSet()
 
                 val allowedKiosk = policy.allowedKioskPackages.toSet()
-                val whitelisted = (explicitlyAllowed + allowedKiosk).toMutableSet()
+                // Whitelist must strictly exclude explicitly hidden and blocked apps
+                val whitelisted = (explicitlyAllowed + allowedKiosk).filterNot { explicitlyHidden.contains(it) || explicitlyBlocked.contains(it) }.toMutableSet()
+                val isGovernanceActive = whitelisted.isNotEmpty() || explicitlyHidden.isNotEmpty() || explicitlyBlocked.isNotEmpty()
 
-                // Handle explicit uninstallation requests
+                // Handle explicit uninstallation / removal requests
                 for (pkg in explicitlyUninstalled) {
                     try {
                         val isInstalled = try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
@@ -249,6 +427,13 @@ class DeviceManagementManager(private val context: Context) {
                     }
                 }
 
+                val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val launchablePackages = try {
+                    pm.queryIntentActivities(launcherIntent, 0).map { it.activityInfo.packageName }.toSet()
+                } catch (_: Exception) {
+                    emptySet()
+                }
+
                 var allowedCount = 0
                 var blockedCount = 0
                 val userAppsToSuspend = mutableListOf<String>()
@@ -258,29 +443,45 @@ class DeviceManagementManager(private val context: Context) {
                     val pkg = appInfo.packageName
                     if (pkg == context.packageName || CRITICAL_SYSTEM_PACKAGES.contains(pkg)) continue
 
-                    val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    val isOverlayOrTheme = pkg.contains("overlay", ignoreCase = true) ||
+                            pkg.contains("rro", ignoreCase = true) ||
+                            pkg.contains("theme", ignoreCase = true) ||
+                            pkg.startsWith("com.samsung.internal") ||
+                            pkg.startsWith("com.android.internal")
+                    if (isOverlayOrTheme) continue
 
-                    // Always ensure system apps and overlays are unhidden to prevent Zygote idmap crashes
-                    try { dpm.setApplicationHidden(adminComponent, pkg, false) } catch (_: Exception) {}
+                    val isUserApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                    val isLaunchable = launchablePackages.contains(pkg)
 
-                    if (whitelisted.contains(pkg)) {
+                    // Only manage packages that are launchable by the user, user-installed, or explicitly governed
+                    if (!isLaunchable && !isUserApp && !whitelisted.contains(pkg) && !explicitlyUninstalled.contains(pkg) && !explicitlyHidden.contains(pkg) && !explicitlyBlocked.contains(pkg)) {
+                        continue
+                    }
+
+                    if (explicitlyHidden.contains(pkg)) {
+                        // Explicitly hidden package — hide from launcher/system
+                        try { dpm.setApplicationHidden(adminComponent, pkg, true) } catch (_: Exception) {}
+                        userAppsToSuspend.add(pkg)
+                        am?.killBackgroundProcesses(pkg)
+                        blockedCount++
+                    } else if (explicitlyBlocked.contains(pkg)) {
+                        // Explicitly blocked/restricted package — hide and suspend
+                        try { dpm.setApplicationHidden(adminComponent, pkg, true) } catch (_: Exception) {}
+                        userAppsToSuspend.add(pkg)
+                        am?.killBackgroundProcesses(pkg)
+                        blockedCount++
+                    } else if (whitelisted.contains(pkg)) {
+                        // Whitelisted application — Enable, Unhide & Unsuspend
+                        try { dpm.enableSystemApp(adminComponent, pkg) } catch (_: Exception) {}
+                        try { dpm.setApplicationHidden(adminComponent, pkg, false) } catch (_: Exception) {}
                         userAppsToUnsuspend.add(pkg)
                         allowedCount++
-                    } else if (!isSystem && policy.applications.isNotEmpty()) {
-                        // Only suspend user-installed non-system applications
+                    } else if (isGovernanceActive) {
+                        // Non-whitelisted application — Suspend & Hide completely from system/launcher/settings
+                        try { dpm.setApplicationHidden(adminComponent, pkg, true) } catch (_: Exception) {}
                         userAppsToSuspend.add(pkg)
+                        am?.killBackgroundProcesses(pkg)
                         blockedCount++
-                    }
-                }
-
-                // 8.5 Ensure pre-installed system apps are enabled, unhidden, and unsuspended if whitelisted
-                if (isDeviceOwner()) {
-                    for (pkg in whitelisted) {
-                        if (pkg != context.packageName) {
-                            try { dpm.enableSystemApp(adminComponent, pkg) } catch (_: Exception) {}
-                            try { dpm.setApplicationHidden(adminComponent, pkg, false) } catch (_: Exception) {}
-                            try { dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), false) } catch (_: Exception) {}
-                        }
                     }
                 }
 
@@ -389,6 +590,77 @@ class DeviceManagementManager(private val context: Context) {
     }
 
     /**
+     * Enterprise Wi-Fi Auto-Configuration and Hardware Blocking Engine.
+     */
+    private fun configureCorporateWifi(policy: PolicyPayload) {
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager ?: return
+
+            // 1. If Wi-Fi is explicitly disabled/blocked by policy
+            if (policy.wifiDisabled) {
+                @Suppress("DEPRECATION")
+                wifiManager.isWifiEnabled = false
+                RrvLog.w(TAG, "🚫 Wi-Fi disabled/blocked on hardware by Enterprise Policy.")
+                return
+            }
+
+            // 2. Auto-configure and connect to corporate Wi-Fi credentials if provided
+            if (!policy.wifiSsid.isNullOrBlank() && policy.wifiAutoConnect) {
+                val ssid = policy.wifiSsid.trim()
+                val password = policy.wifiPassword ?: ""
+                val security = (policy.wifiSecurityType ?: "WPA").uppercase()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val suggestionBuilder = android.net.wifi.WifiNetworkSuggestion.Builder()
+                        .setSsid(ssid)
+                        .setIsAppInteractionRequired(false)
+                        .setIsUserInteractionRequired(false)
+
+                    when {
+                        security.contains("WPA3") -> {
+                            if (password.isNotBlank()) suggestionBuilder.setWpa3Passphrase(password)
+                        }
+                        security.contains("WPA") || security.contains("PSK") -> {
+                            if (password.isNotBlank()) suggestionBuilder.setWpa2Passphrase(password)
+                        }
+                        security == "OPEN" || security == "NONE" -> {
+                            // Open network
+                        }
+                        else -> {
+                            if (password.isNotBlank()) suggestionBuilder.setWpa2Passphrase(password)
+                        }
+                    }
+
+                    val suggestions = listOf(suggestionBuilder.build())
+                    val status = wifiManager.addNetworkSuggestions(suggestions)
+                    RrvLog.i(TAG, "📶 Corporate Wi-Fi '$ssid' configured via WifiNetworkSuggestion (Status: $status)")
+                } else {
+                    @Suppress("DEPRECATION")
+                    val wifiConfig = android.net.wifi.WifiConfiguration().apply {
+                        SSID = "\"$ssid\""
+                        if (password.isNotBlank()) {
+                            preSharedKey = "\"$password\""
+                        } else {
+                            allowedKeyManagement.set(android.net.wifi.WifiConfiguration.KeyMgmt.NONE)
+                        }
+                    }
+                    @Suppress("DEPRECATION")
+                    val netId = wifiManager.addNetwork(wifiConfig)
+                    if (netId != -1) {
+                        @Suppress("DEPRECATION")
+                        wifiManager.enableNetwork(netId, true)
+                        @Suppress("DEPRECATION")
+                        wifiManager.reconnect()
+                        RrvLog.i(TAG, "📶 Connected to legacy Wi-Fi profile: $ssid (NetId: $netId)")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to configure corporate Wi-Fi: ${e.message}", e)
+        }
+    }
+
+    /**
      * Set display sleep timeout in seconds (both via DPM maximumTimeToLock and System Settings).
      */
     fun setScreenTimeout(seconds: Int) {
@@ -398,12 +670,26 @@ class DeviceManagementManager(private val context: Context) {
             if (isDeviceOwner() || isAdminActive()) {
                 dpm.setMaximumTimeToLock(adminComponent, timeoutMs)
             }
-            android.provider.Settings.System.putInt(
-                context.contentResolver,
-                android.provider.Settings.System.SCREEN_OFF_TIMEOUT,
-                timeoutMs.toInt()
-            )
-            RrvLog.i(TAG, "⏰ Screen timeout configured to $seconds s ($timeoutMs ms).")
+            try {
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_OFF_TIMEOUT,
+                    timeoutMs.toInt()
+                )
+                RrvLog.i(TAG, "⏰ Screen timeout configured to $seconds s ($timeoutMs ms).")
+            } catch (se: Exception) {
+                grantDpcRuntimePermissions()
+                try {
+                    android.provider.Settings.System.putInt(
+                        context.contentResolver,
+                        android.provider.Settings.System.SCREEN_OFF_TIMEOUT,
+                        timeoutMs.toInt()
+                    )
+                    RrvLog.i(TAG, "⏰ Screen timeout configured to $seconds s after re-granting AppOp.")
+                } catch (inner: Exception) {
+                    RrvLog.w(TAG, "Could not set screen timeout in Settings.System: ${inner.message}")
+                }
+            }
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not set screen timeout to $seconds s: ${e.message}")
         }
@@ -412,44 +698,71 @@ class DeviceManagementManager(private val context: Context) {
     /**
      * Set display brightness percentage (0..100%).
      */
-    fun setScreenBrightness(percent: Int) {
-        try {
+    fun setScreenBrightness(percent: Int): Boolean {
+        return try {
             val clamped = percent.coerceIn(0, 100)
             val brightnessValue = ((clamped * 255) / 100).coerceIn(1, 255)
-            android.provider.Settings.System.putInt(
-                context.contentResolver,
-                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
-                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
-            )
-            android.provider.Settings.System.putInt(
-                context.contentResolver,
-                android.provider.Settings.System.SCREEN_BRIGHTNESS,
-                brightnessValue
-            )
+            try {
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                )
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                    brightnessValue
+                )
+            } catch (se: Exception) {
+                grantDpcRuntimePermissions()
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                )
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                    brightnessValue
+                )
+            }
             RrvLog.i(TAG, "🔆 Screen brightness set to $clamped% (raw $brightnessValue/255).")
+            true
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not set screen brightness to $percent%: ${e.message}")
+            false
         }
     }
 
     /**
      * Toggle Automatic (Adaptive) Display Brightness mode.
      */
-    fun setAutoBrightness(enabled: Boolean) {
-        try {
+    fun setAutoBrightness(enabled: Boolean): Boolean {
+        return try {
             val mode = if (enabled) {
                 android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
             } else {
                 android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
             }
-            android.provider.Settings.System.putInt(
-                context.contentResolver,
-                android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
-                mode
-            )
+            try {
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    mode
+                )
+            } catch (se: Exception) {
+                grantDpcRuntimePermissions()
+                android.provider.Settings.System.putInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    mode
+                )
+            }
             RrvLog.i(TAG, "🔆 Auto-brightness mode configured: $enabled")
+            true
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not toggle auto brightness: ${e.message}")
+            false
         }
     }
 
@@ -529,38 +842,42 @@ class DeviceManagementManager(private val context: Context) {
      */
     fun triggerAlarmSound(durationSeconds: Int = 10) {
         CoroutineScope(Dispatchers.Default).launch {
-            var mediaPlayer: android.media.MediaPlayer? = null
+            var ringtone: android.media.Ringtone? = null
             try {
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
                 if (audioManager != null) {
                     val maxAlarm = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_ALARM)
+                    val maxMusic = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    val maxRing = audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_RING)
                     audioManager.setStreamVolume(android.media.AudioManager.STREAM_ALARM, maxAlarm, 0)
+                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, maxMusic, 0)
+                    audioManager.setStreamVolume(android.media.AudioManager.STREAM_RING, maxRing, 0)
                 }
 
                 val alarmUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
                     ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
+                    ?: android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI
 
-                mediaPlayer = android.media.MediaPlayer().apply {
-                    setDataSource(context, alarmUri)
-                    setAudioAttributes(
-                        android.media.AudioAttributes.Builder()
-                            .setUsage(android.media.AudioAttributes.USAGE_ALARM)
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
-                    isLooping = true
-                    prepare()
-                    start()
+                ringtone = android.media.RingtoneManager.getRingtone(context, alarmUri)
+                if (ringtone != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        ringtone.isLooping = true
+                        ringtone.volume = 1.0f
+                    }
+                    ringtone.audioAttributes = android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                    ringtone.play()
+                    RrvLog.w(TAG, "🚨 High-decibel alarm siren sounding for $durationSeconds seconds!")
                 }
-                RrvLog.w(TAG, "🚨 High-decibel alarm siren sounding for $durationSeconds seconds!")
 
                 kotlinx.coroutines.delay(durationSeconds * 1000L)
             } catch (e: Exception) {
                 RrvLog.e(TAG, "Failed to play alarm siren sound", e)
             } finally {
                 try {
-                    mediaPlayer?.stop()
-                    mediaPlayer?.release()
+                    ringtone?.stop()
                 } catch (_: Exception) {}
                 RrvLog.i(TAG, "🚨 Alarm siren playback completed.")
             }
@@ -589,18 +906,112 @@ class DeviceManagementManager(private val context: Context) {
     }
 
     /**
-     * Dismiss lost mode.
+     * Unlock device / clear lockscreen banner.
      */
-    fun disableLostMode() {
+    fun unlockDevice() {
         try {
             if (isDeviceOwner()) {
                 dpm.setDeviceOwnerLockScreenInfo(adminComponent, null)
             }
-            RrvLog.i(TAG, "🟢 Lost Mode dismissed.")
+            RrvLog.i(TAG, "Device unlocked and lock screen info cleared.")
         } catch (e: Exception) {
-            RrvLog.e(TAG, "Failed to disable lost mode", e)
+            RrvLog.e(TAG, "Failed to unlock device", e)
         }
     }
+
+    /**
+     * Disable lost mode.
+     */
+    fun disableLostMode() {
+        unlockDevice()
+    }
+
+    /**
+     * Enterprise Device Owner Wipe / Factory Reset.
+     */
+    fun wipeDevice(wipeSdCard: Boolean = true): Boolean {
+        if (!isDeviceOwner()) return false
+        return try {
+            RrvLog.w(TAG, "🚨 Executing ENTERPRISE DPM WIPE...")
+            val flags = if (wipeSdCard) DevicePolicyManager.WIPE_EXTERNAL_STORAGE else 0
+            dpm.wipeData(flags)
+            true
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to execute wipe", e)
+            false
+        }
+    }
+
+    /**
+     * Silent uninstallation of managed apps (Device Owner).
+     */
+    fun silentUninstall(packageName: String): Boolean {
+        try {
+            if (packageName.isBlank()) {
+                RrvLog.e(TAG, "Cannot uninstall: Package name is blank.")
+                return false
+            }
+
+            // 1. Guard MDM Core package against accidental removal
+            if (packageName == context.packageName || packageName.startsWith("com.rrv.mdm")) {
+                RrvLog.e(TAG, "🚨 BLOCKED: Attempt to uninstall MDM Core package [$packageName] rejected.")
+                return false
+            }
+
+            val pm = context.packageManager
+            val appInfo = try {
+                pm.getApplicationInfo(packageName, 0)
+            } catch (_: PackageManager.NameNotFoundException) {
+                RrvLog.w(TAG, "Package $packageName not installed on device.")
+                return false
+            }
+
+            // 2. Guard Pre-Installed OEM/System Apps (Non-removable system partition binaries)
+            val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+            val isUpdatedSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+            if (isSystem && !isUpdatedSystem) {
+                RrvLog.e(TAG, "🚫 APPLICATION_NOT_UNINSTALLABLE: Package $packageName is a pre-installed system app.")
+                return false
+            }
+
+            if (isDeviceOwner()) {
+                val packageInstaller = pm.packageInstaller
+                val intent = Intent("com.rrv.mdm.dpc.UNINSTALL_COMPLETE").setPackage(context.packageName)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+                } else {
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = android.app.PendingIntent.getBroadcast(context, 0, intent, flags)
+                packageInstaller.uninstall(packageName, pendingIntent.intentSender)
+                RrvLog.i(TAG, "✓ Silent uninstall initiated for $packageName")
+                return true
+            } else {
+                RrvLog.w(TAG, "Cannot silent uninstall: Agent is not Device Owner.")
+                return false
+            }
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to uninstall package $packageName", e)
+            return false
+        }
+    }
+
+    /**
+     * Request device bugreport (Device Owner).
+     */
+    fun requestBugreport(): Boolean {
+        return try {
+            if (isDeviceOwner() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                RrvLog.i(TAG, "Requesting device bugreport...")
+                dpm.requestBugreport(adminComponent)
+            } else false
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to request bugreport: ${e.message}", e)
+            false
+        }
+    }
+
+    fun setStreamVolume(streamType: Int, percent: Int) = setStreamVolumePercent(streamType, percent)
 
     private fun setUserRestriction(key: String, enable: Boolean) {
         try {

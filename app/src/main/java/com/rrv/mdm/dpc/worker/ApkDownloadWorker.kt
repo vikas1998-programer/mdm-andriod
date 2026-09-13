@@ -4,10 +4,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageInstaller.SessionParams
+import android.os.Build
 import android.util.Log
 import androidx.work.*
 import com.rrv.mdm.dpc.RrvMdmApplication
+import com.rrv.mdm.dpc.domain.model.CommandStatus
+import com.rrv.mdm.dpc.receiver.SilentInstallReceiver
 import com.rrv.mdm.dpc.util.RrvLog
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -103,7 +109,12 @@ class ApkDownloadWorker(
             downloadApk(downloadUrl, apkFile, repository.deviceJwt)
         } catch (e: IOException) {
             RrvLog.e(TAG, "Download failed for $packageName: ${e.message}", e)
-            mqttManager.publishCommandAck(commandId, "FAILED", "APK download error: ${e.message}")
+            if (commandId.isNotBlank()) {
+                mqttManager.publishCommandAck(commandId, "FAILED", "APK download error: ${e.message}")
+                CoroutineScope(Dispatchers.IO).launch {
+                    app.repositoryImpl.updateCommandStatus(commandId, CommandStatus.FAILED, "APK download error: ${e.message}", 0)
+                }
+            }
             return Result.retry()
         }
 
@@ -113,7 +124,12 @@ class ApkDownloadWorker(
             if (!actualSha.equals(expectedSha, ignoreCase = true)) {
                 RrvLog.e(TAG, "❌ SHA-256 mismatch for $packageName! expected=$expectedSha got=$actualSha")
                 apkFile.delete()
-                mqttManager.publishCommandAck(commandId, "FAILED", "SHA-256 integrity check failed")
+                if (commandId.isNotBlank()) {
+                    mqttManager.publishCommandAck(commandId, "FAILED", "SHA-256 integrity check failed")
+                    CoroutineScope(Dispatchers.IO).launch {
+                        app.repositoryImpl.updateCommandStatus(commandId, CommandStatus.FAILED, "SHA-256 integrity check failed", 0)
+                    }
+                }
                 return Result.failure()
             }
             RrvLog.i(TAG, "✓ SHA-256 verified for $packageName")
@@ -121,18 +137,33 @@ class ApkDownloadWorker(
 
         // ── Step 3: Silent Install via PackageInstaller ───────────────────
         try {
-            silentInstall(apkFile, packageName)
-            RrvLog.i(TAG, "✅ APK install session committed: $packageName v$versionName")
-            mqttManager.publishCommandAck(commandId, "EXECUTED", "APK installed silently: $packageName v$versionName")
+            silentInstall(apkFile, packageName, commandId)
+            RrvLog.i(TAG, "✅ APK install session committed to PackageInstaller: $packageName v$versionName (commandId: $commandId)")
+
+            if (commandId.isNotBlank()) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    app.repositoryImpl.updateCommandStatus(
+                        commandId,
+                        CommandStatus.EXECUTING,
+                        "APK session committed. Awaiting OS installation confirmation...",
+                        80
+                    )
+                }
+            }
 
             // Persist managed config values for this package
             if (appConfigJson.isNotBlank() && appConfigJson != "{}") {
                 repository.saveManagedConfig(packageName, appConfigJson)
             }
         } catch (e: Exception) {
-            RrvLog.e(TAG, "Silent install failed for $packageName: ${e.message}", e)
+            RrvLog.e(TAG, "Silent install session failed for $packageName: ${e.message}", e)
             apkFile.delete()
-            mqttManager.publishCommandAck(commandId, "FAILED", "Silent install error: ${e.message}")
+            if (commandId.isNotBlank()) {
+                mqttManager.publishCommandAck(commandId, "FAILED", "Silent install error: ${e.message}")
+                CoroutineScope(Dispatchers.IO).launch {
+                    app.repositoryImpl.updateCommandStatus(commandId, CommandStatus.FAILED, "Silent install error: ${e.message}", 0)
+                }
+            }
             return Result.retry()
         }
 
@@ -160,10 +191,13 @@ class ApkDownloadWorker(
         if (!jwt.isNullOrBlank()) {
             connection.setRequestProperty("Authorization", "Bearer $jwt")
         }
-        connection.connect()
+        val responseCode = connection.responseCode
+        val contentLength = connection.contentLengthLong
+        val contentType = connection.contentType ?: "unknown"
+        RrvLog.i(TAG, "📥 [APK-DOWNLOAD-RESPONSE] HTTP $responseCode from $fullUrl | Type: $contentType, Size: ${contentLength}B")
 
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            throw IOException("Server returned HTTP ${connection.responseCode} for $fullUrl")
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            throw IOException("Server returned HTTP $responseCode for $fullUrl")
         }
 
         connection.inputStream.use { input ->
@@ -191,7 +225,7 @@ class ApkDownloadWorker(
     // ── Silent Install (Device Owner PackageInstaller) ────────────────────────
 
     @Throws(Exception::class)
-    private fun silentInstall(apkFile: File, packageName: String) {
+    private fun silentInstall(apkFile: File, packageName: String, commandId: String) {
         val packageInstaller = context.packageManager.packageInstaller
         val params = SessionParams(SessionParams.MODE_FULL_INSTALL).apply {
             setAppPackageName(packageName)
@@ -208,11 +242,18 @@ class ApkDownloadWorker(
             }
 
             // Silent commit intent — routed to SilentInstallReceiver
-            val intent = Intent("com.rrv.mdm.dpc.SILENT_INSTALL_RESULT")
-            intent.setPackage(context.packageName)
+            val intent = Intent(SilentInstallReceiver.ACTION_SILENT_INSTALL_RESULT).apply {
+                setPackage(context.packageName)
+                putExtra(SilentInstallReceiver.EXTRA_COMMAND_ID, commandId)
+                putExtra(PackageInstaller.EXTRA_PACKAGE_NAME, packageName)
+            }
+            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
             val pi = android.app.PendingIntent.getBroadcast(
-                context, sessionId, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                context, sessionId, intent, flags
             )
             session.commit(pi.intentSender)
         } catch (e: Exception) {

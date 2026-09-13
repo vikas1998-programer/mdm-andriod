@@ -37,16 +37,12 @@ class LocalGeofenceEngine {
     }
 
     /**
-     * Mathematical Haversine Distance (in meters)
+     * Mathematical Geodesic Distance (in meters) via native Android WGS84 algorithm.
      */
     fun calculateHaversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val dLat = Math.toRadians(lat2 - lat1)
-        val dLon = Math.toRadians(lon2 - lon1)
-        val a = sin(dLat / 2).pow(2) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                sin(dLon / 2).pow(2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return EARTH_RADIUS_METERS * c
+        val results = FloatArray(1)
+        Location.distanceBetween(lat1, lon1, lat2, lon2, results)
+        return results[0].toDouble()
     }
 
     private fun isInsideCircular(lat: Double, lng: Double, centerLat: Double, centerLng: Double, radiusM: Double): Boolean {

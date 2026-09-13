@@ -1,3 +1,4 @@
+
 package com.rrv.mdm.dpc.domain.model
 
 import android.graphics.drawable.Drawable

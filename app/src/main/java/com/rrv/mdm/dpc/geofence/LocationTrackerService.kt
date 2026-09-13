@@ -41,7 +41,38 @@ class LocationTrackerService : Service() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         nativeLocationManager = getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
 
-        startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        // Ensure DPC permissions are auto-granted if Device Owner
+        try {
+            val app = applicationContext as? RrvMdmApplication
+            app?.deviceManager?.grantDpcRuntimePermissions()
+        } catch (_: Exception) {}
+
+        val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarseLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasLocationPermission = hasFineLocation || hasCoarseLocation
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasLocationPermission) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildForegroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            }
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "startForeground typed fallback: ${e.message}")
+            try {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            } catch (err: Exception) {
+                RrvLog.e(TAG, "Failed to start foreground service: ${err.message}", err)
+            }
+        }
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -54,16 +85,20 @@ class LocationTrackerService : Service() {
             handleNewLocation(location)
         }
 
-        try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                if (loc != null) {
-                    RrvLog.geo("Initial GPS fix obtained: ${loc.latitude}, ${loc.longitude}")
-                    handleNewLocation(loc)
+        if (hasLocationPermission) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                    if (loc != null) {
+                        RrvLog.geo("Initial GPS fix obtained: ${loc.latitude}, ${loc.longitude}")
+                        handleNewLocation(loc)
+                    }
                 }
-            }
-        } catch (_: Exception) {}
+            } catch (_: Exception) {}
 
-        requestLocationUpdates()
+            requestLocationUpdates()
+        } else {
+            RrvLog.w(TAG, "Location permission missing on service creation — deferred GPS listener registration.")
+        }
     }
 
     private fun requestLocationUpdates() {

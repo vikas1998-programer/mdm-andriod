@@ -20,7 +20,8 @@ import kotlinx.coroutines.withContext
 data class ExecutionResult(
     val isSuccess: Boolean,
     val message: String,
-    val progress: Int = 100
+    val progress: Int = 100,
+    val isAsyncPending: Boolean = false
 )
 
 interface CommandExecutor {
@@ -109,7 +110,12 @@ class InstallApplicationExecutor : CommandExecutor {
             context, command.commandId, appId, packageName, appTitle,
             downloadUrl, sha256, versionCode, versionName, appConfigJson
         )
-        return ExecutionResult(true, "Silent installation background task enqueued for $packageName.", 50)
+        return ExecutionResult(
+            isSuccess = true,
+            message = "Silent installation background task enqueued for $packageName.",
+            progress = 30,
+            isAsyncPending = true
+        )
     }
 }
 
@@ -136,8 +142,8 @@ class PolicyUpdateExecutor : CommandExecutor {
         val policyHash = map?.get("policyHash")?.toString()
         val rawPayloadJson = map?.get("payloadJson")?.toString()
 
-        // If legacy inline payload contains full policy structure
-        if (!rawPayloadJson.isNullOrBlank() && rawPayloadJson != "{}" && rawPayloadJson.contains("name")) {
+        // If inline payload contains full policy structure
+        if (!rawPayloadJson.isNullOrBlank() && rawPayloadJson != "{}" && (rawPayloadJson.contains("name") || rawPayloadJson.contains("passcode") || rawPayloadJson.contains("network") || rawPayloadJson.contains("applications") || rawPayloadJson.contains("hardware"))) {
             val parsed = PolicyPayload.fromJson(rawPayloadJson)
             app.repository.saveActivePolicy(parsed)
             app.deviceManager.applyPolicy(parsed, force = true)
@@ -146,17 +152,15 @@ class PolicyUpdateExecutor : CommandExecutor {
             return ExecutionResult(true, "Policy profile '${parsed.name}' enforced successfully.")
         }
 
-        // Lightweight Trigger Signal via MQTT -> Fetch full policy payload from REST API
-        val deviceId = app.repository.deviceId.ifBlank {
-            android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: ""
-        }
+        // Trigger Signal via MQTT -> Fetch full policy payload from REST API (pass currentHash = null to force fresh retrieval and bypass 304 cache)
+        val deviceId = app.mqttManager.getEffectiveDeviceId()
         val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
         if (!configurationId.isNullOrBlank()) {
-            app.apiClient.fetchAndApplyPolicyById(configurationId, policyHash) { success ->
+            app.apiClient.fetchAndApplyPolicyById(configurationId, currentHash = null) { success ->
                 deferred.complete(success)
             }
         } else {
-            app.apiClient.fetchAndApplyPolicy(deviceId, policyHash) { success ->
+            app.apiClient.fetchAndApplyPolicy(deviceId, currentHash = null) { success ->
                 deferred.complete(success)
             }
         }
@@ -168,7 +172,7 @@ class PolicyUpdateExecutor : CommandExecutor {
         return if (ok) {
             ExecutionResult(true, "Policy profile fetched via REST API and enforced successfully.")
         } else {
-            ExecutionResult(true, "Policy trigger processed.")
+            ExecutionResult(false, "Failed to fetch or apply policy profile from server.")
         }
     }
 }
@@ -297,14 +301,24 @@ class SetBrightnessExecutor : CommandExecutor {
 
         val auto = map?.get("autoBrightness") as? Boolean ?: map?.get("autoBrightnessEnabled") as? Boolean
 
+        var autoOk = true
+        var brightOk = true
+
         if (auto != null) {
-            app.deviceManager.setAutoBrightness(auto)
+            autoOk = app.deviceManager.setAutoBrightness(auto)
         }
         if (brightness != null) {
             app.deviceManager.setAutoBrightness(false)
-            app.deviceManager.setScreenBrightness(brightness)
-            NotificationHelper.showCommandNotification(context, "🔆 Screen Brightness", "Screen brightness adjusted to $brightness% by administrator.")
-            return ExecutionResult(true, "Screen brightness set to $brightness%.")
+            brightOk = app.deviceManager.setScreenBrightness(brightness)
+            if (brightOk) {
+                NotificationHelper.showCommandNotification(context, "🔆 Screen Brightness", "Screen brightness adjusted to $brightness% by administrator.")
+                return ExecutionResult(true, "Screen brightness set to $brightness%.")
+            } else {
+                return ExecutionResult(false, "Failed to set screen brightness: android.permission.WRITE_SETTINGS is required.")
+            }
+        }
+        if (!autoOk) {
+            return ExecutionResult(false, "Failed to toggle auto-brightness: android.permission.WRITE_SETTINGS is required.")
         }
         return ExecutionResult(true, "Auto-brightness mode set to $auto.")
     }
@@ -555,14 +569,20 @@ class CommandProcessor(
             // Step 4: Execute
             try {
                 val result = executor.execute(command, context)
-                val finalStatus = if (result.isSuccess) CommandStatus.SUCCESS else CommandStatus.FAILED
-                repository.updateCommandStatus(command.commandId, finalStatus, result.message, result.progress)
-                app.mqttManager.publishCommandAck(
-                    command.commandId,
-                    if (result.isSuccess) "EXECUTED" else "FAILED",
-                    result.message
-                )
-                RrvLog.i(TAG, "✓ [CMD-ENGINE] Command ${command.commandId} finished: ${result.message}")
+                if (result.isAsyncPending) {
+                    // Hand off to asynchronous worker/receiver; keep status in EXECUTING without premature ACK
+                    repository.updateCommandStatus(command.commandId, CommandStatus.EXECUTING, result.message, result.progress)
+                    RrvLog.i(TAG, "⏳ [CMD-ENGINE] Command ${command.commandId} handed off to background worker: ${result.message}")
+                } else {
+                    val finalStatus = if (result.isSuccess) CommandStatus.SUCCESS else CommandStatus.FAILED
+                    repository.updateCommandStatus(command.commandId, finalStatus, result.message, result.progress)
+                    app.mqttManager.publishCommandAck(
+                        command.commandId,
+                        if (result.isSuccess) "EXECUTED" else "FAILED",
+                        result.message
+                    )
+                    RrvLog.i(TAG, "✓ [CMD-ENGINE] Command ${command.commandId} finished: ${result.message}")
+                }
             } catch (e: Exception) {
                 RrvLog.e(TAG, "✕ [CMD-ENGINE] Error executing ${command.commandId}", e)
                 repository.updateCommandStatus(command.commandId, CommandStatus.FAILED, e.message ?: "Execution error", 0)

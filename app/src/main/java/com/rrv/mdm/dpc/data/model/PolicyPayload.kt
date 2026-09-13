@@ -20,9 +20,14 @@ data class PolicyPayload(
     @SerializedName("statusBarDisabled") val statusBarDisabled: Boolean = false,
     @SerializedName("printingDisabled") val printingDisabled: Boolean = false,
 
-    // Network Restrictions
-    @SerializedName("tetheringDisabled") val tetheringDisabled: Boolean = false,
+    // Network Restrictions & Corporate Wi-Fi
+    @SerializedName("wifiDisabled") val wifiDisabled: Boolean = false,
     @SerializedName("wifiConfigLock") val wifiConfigLock: Boolean = false,
+    @SerializedName("wifiSsid") val wifiSsid: String? = null,
+    @SerializedName("wifiPassword") val wifiPassword: String? = null,
+    @SerializedName("wifiSecurityType") val wifiSecurityType: String? = "WPA",
+    @SerializedName("wifiAutoConnect") val wifiAutoConnect: Boolean = true,
+    @SerializedName("tetheringDisabled") val tetheringDisabled: Boolean = false,
     @SerializedName("dataRoamingDisabled") val dataRoamingDisabled: Boolean = false,
     @SerializedName("airplaneModeDisabled") val airplaneModeDisabled: Boolean = false,
 
@@ -76,8 +81,14 @@ data class PolicyPayload(
                 var safeBootDisabled = base.safeBootDisabled
                 var developerOptionsDisabled = base.developerOptionsDisabled
 
-                var tetheringDisabled = base.tetheringDisabled
+                var wifiDisabled = base.wifiDisabled
                 var wifiConfigLock = base.wifiConfigLock
+                var wifiSsid = base.wifiSsid
+                var wifiPassword = base.wifiPassword
+                var wifiSecurityType = base.wifiSecurityType
+                var wifiAutoConnect = base.wifiAutoConnect
+
+                var tetheringDisabled = base.tetheringDisabled
                 var dataRoamingDisabled = base.dataRoamingDisabled
                 var airplaneModeDisabled = base.airplaneModeDisabled
 
@@ -101,8 +112,13 @@ data class PolicyPayload(
                 // Check nested network block
                 val net = root["network"] as? Map<*, *>
                 if (net != null) {
-                    (net["tetheringDisabled"] as? Boolean ?: net["tethering_disabled"] as? Boolean)?.let { tetheringDisabled = it }
+                    (net["wifiDisabled"] as? Boolean ?: net["wifi_disabled"] as? Boolean)?.let { wifiDisabled = it }
                     (net["wifiConfigLock"] as? Boolean ?: net["wifi_config_lock"] as? Boolean)?.let { wifiConfigLock = it }
+                    (net["wifiSsid"] as? String ?: net["wifi_ssid"] as? String ?: net["ssid"] as? String)?.let { wifiSsid = it }
+                    (net["wifiPassword"] as? String ?: net["wifi_password"] as? String ?: net["password"] as? String)?.let { wifiPassword = it }
+                    (net["wifiSecurityType"] as? String ?: net["wifi_security_type"] as? String)?.let { wifiSecurityType = it }
+                    (net["wifiAutoConnect"] as? Boolean ?: net["wifi_auto_connect"] as? Boolean)?.let { wifiAutoConnect = it }
+                    (net["tetheringDisabled"] as? Boolean ?: net["tethering_disabled"] as? Boolean)?.let { tetheringDisabled = it }
                     (net["dataRoamingDisabled"] as? Boolean ?: net["data_roaming_disabled"] as? Boolean)?.let { dataRoamingDisabled = it }
                     (net["airplaneModeDisabled"] as? Boolean ?: net["airplane_mode_disabled"] as? Boolean)?.let { airplaneModeDisabled = it }
                 }
@@ -205,6 +221,13 @@ data class PolicyPayload(
                 (root["alarmVolumePercent"] as? Number ?: root["alarm_volume_percent"] as? Number ?: root["alarmVolume"] as? Number)?.let { alarmVol = it.toInt() }
                 (root["ringVolumePercent"] as? Number ?: root["ring_volume_percent"] as? Number ?: root["ringVolume"] as? Number)?.let { ringVol = it.toInt() }
 
+                (root["wifiDisabled"] as? Boolean ?: root["wifi_disabled"] as? Boolean)?.let { wifiDisabled = it }
+                (root["wifiConfigLock"] as? Boolean ?: root["wifi_config_lock"] as? Boolean)?.let { wifiConfigLock = it }
+                (root["wifiSsid"] as? String ?: root["wifi_ssid"] as? String ?: root["ssid"] as? String)?.let { wifiSsid = it }
+                (root["wifiPassword"] as? String ?: root["wifi_password"] as? String ?: root["password"] as? String)?.let { wifiPassword = it }
+                (root["wifiSecurityType"] as? String ?: root["wifi_security_type"] as? String)?.let { wifiSecurityType = it }
+                (root["wifiAutoConnect"] as? Boolean ?: root["wifi_auto_connect"] as? Boolean)?.let { wifiAutoConnect = it }
+
                 base.copy(
                     cameraDisabled = cameraDisabled,
                     screenCaptureDisabled = screenCaptureDisabled,
@@ -215,8 +238,13 @@ data class PolicyPayload(
                     factoryResetDisabled = factoryResetDisabled,
                     safeBootDisabled = safeBootDisabled,
                     developerOptionsDisabled = developerOptionsDisabled,
-                    tetheringDisabled = tetheringDisabled,
+                    wifiDisabled = wifiDisabled,
                     wifiConfigLock = wifiConfigLock,
+                    wifiSsid = wifiSsid,
+                    wifiPassword = wifiPassword,
+                    wifiSecurityType = wifiSecurityType,
+                    wifiAutoConnect = wifiAutoConnect,
+                    tetheringDisabled = tetheringDisabled,
                     dataRoamingDisabled = dataRoamingDisabled,
                     airplaneModeDisabled = airplaneModeDisabled,
                     clipboardDlpDisabled = clipboardDlpDisabled,

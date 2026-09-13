@@ -1,7 +1,11 @@
 package com.rrv.mdm.dpc.data.repository
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
+import android.provider.Settings
+import android.telephony.TelephonyManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
@@ -9,6 +13,7 @@ import com.google.gson.reflect.TypeToken
 import com.rrv.mdm.dpc.data.model.GeofenceZone
 import com.rrv.mdm.dpc.data.model.PolicyPayload
 
+@SuppressLint("HardwareIds", "MissingPermission")
 class MdmRepository(private val context: Context) {
 
     private val gson = Gson()
@@ -30,6 +35,85 @@ class MdmRepository(private val context: Context) {
         context.getSharedPreferences("rrv_dpc_vault_fallback", Context.MODE_PRIVATE)
     }
 
+    fun getHardwareImei(): String? {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return null
+            val imei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    tm.imei ?: tm.getImei(0)
+                } catch (_: Exception) {
+                    try { tm.deviceId } catch (_: Exception) { null }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                try { tm.deviceId } catch (_: Exception) { null }
+            }
+            imei?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) && it.matches(Regex("^[0-9A-Fa-f]{14,18}$")) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun getHardwareSerial(): String? {
+        return try {
+            val serial = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try { Build.getSerial() } catch (_: Exception) { @Suppress("DEPRECATION") Build.SERIAL }
+            } else {
+                @Suppress("DEPRECATION") Build.SERIAL
+            }
+            serial?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun getAndroidId(): String? {
+        return try {
+            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+                ?.trim()?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) && !it.equals("null", ignoreCase = true) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Primary Device Identifier Hierarchy for all transactions:
+     * 1. Hardware IMEI (Primary identifier for telephony devices)
+     * 2. Hardware Serial Number (Primary fallback for Wi-Fi / non-telephony devices)
+     * 3. Enrolled Backend Device ID (if assigned)
+     * 4. Android ID
+     * 5. Fallback DEV-{MODEL}-{ID}
+     */
+    fun getEffectiveDeviceId(): String {
+        // Priority 1: Hardware IMEI
+        val imei = getHardwareImei()
+        if (!imei.isNullOrBlank()) {
+            return imei
+        }
+
+        // Priority 2: Hardware Serial Number
+        val serial = getHardwareSerial()
+        if (!serial.isNullOrBlank()) {
+            return serial
+        }
+
+        // Priority 3: Enrolled Backend Device ID
+        val stored = prefs.getString("KEY_DEVICE_ID", "") ?: ""
+        if (stored.isNotBlank() && stored != "unknown") {
+            return stored
+        }
+
+        // Priority 4: Android ID
+        val androidId = getAndroidId()
+        if (!androidId.isNullOrBlank()) {
+            return androidId
+        }
+
+        // Priority 5: Fallback Hardware Fingerprint
+        val fallback = "DEV-" + Build.MODEL.replace(" ", "-") + "-" + Build.ID.take(6)
+        return fallback
+    }
+
     var serverUrl: String
         get() = prefs.getString("KEY_SERVER_URL", "")?.takeIf { it.isNotBlank() } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.SERVER_URL
         set(value) = prefs.edit().putString("KEY_SERVER_URL", value).apply()
@@ -43,7 +127,7 @@ class MdmRepository(private val context: Context) {
         set(value) = prefs.edit().putInt("KEY_MQTT_PORT", value).apply()
 
     var deviceId: String
-        get() = prefs.getString("KEY_DEVICE_ID", "") ?: ""
+        get() = getEffectiveDeviceId()
         set(value) = prefs.edit().putString("KEY_DEVICE_ID", value).apply()
 
     var enrollmentToken: String

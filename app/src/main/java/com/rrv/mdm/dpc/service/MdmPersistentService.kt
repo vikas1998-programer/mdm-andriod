@@ -90,12 +90,11 @@ class MdmPersistentService : Service() {
         heartbeatJob?.cancel()
         heartbeatJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
-                delay(45_000L) // Transmit status & telemetry to MDM server every 45 seconds
+                delay(60_000L) // Health check interval every 60 seconds
                 try {
                     if (app.repository.isEnrolled || app.deviceManager.isDeviceOwner()) {
-                        if (app.mqttManager.isConnected()) {
-                            app.mqttManager.publishTelemetry(null, true)
-                        } else {
+                        if (!app.mqttManager.isConnected()) {
+                            // MQTT offline fallback: Transmit REST heartbeat and trigger reconnect
                             val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
                             val batteryPct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
                             val isCharging = bm?.isCharging ?: false
@@ -103,14 +102,18 @@ class MdmPersistentService : Service() {
                             if (deviceId.isNotBlank()) {
                                 app.apiClient.sendHeartbeat(deviceId, batteryPct, isCharging)
                             }
+                            Log.d(TAG, "MQTT disconnected — REST fallback heartbeat sent, reconnecting MQTT...")
+                            app.mqttManager.connect()
                         }
+                        // When MQTT is connected, MdmMqttManager's internal loop streams real-time telemetry,
+                        // eliminating duplicate packet overhead.
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Persistent service 45s heartbeat tick exception: ${e.message}")
+                    Log.w(TAG, "Persistent service heartbeat watchdog exception: ${e.message}")
                 }
             }
         }
-        Log.i(TAG, "⏰ 45-second high-frequency device telemetry heartbeat loop active.")
+        Log.i(TAG, "⏰ MDM heartbeat watchdog loop active.")
     }
 
     private fun startPolicyWatchdog(app: RrvMdmApplication) {

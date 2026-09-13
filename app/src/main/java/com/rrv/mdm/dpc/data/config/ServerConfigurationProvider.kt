@@ -233,8 +233,11 @@ class ServerConfigurationProvider(private val context: Context) {
                 .head()
                 .build()
             val resp = client.newCall(req).execute()
+            val code = resp.code
+            val isSuccess = resp.isSuccessful || code in 200..499
+            RrvLog.d(TAG, "📥 [HEALTH-CHECK-RESPONSE] HTTP $code from $cleanUrl/api/v1/health (Reachable: $isSuccess)")
             resp.close()
-            resp.isSuccessful || resp.code in 200..499 // Any response from host indicates reachability
+            isSuccess
         } catch (e: Exception) {
             RrvLog.w(TAG, "Pre-flight endpoint check error for $url: ${e.message}")
             // Fallback check root URL
@@ -245,6 +248,8 @@ class ServerConfigurationProvider(private val context: Context) {
                     .head()
                     .build()
                 val resp = client.newCall(req).execute()
+                val code = resp.code
+                RrvLog.d(TAG, "📥 [FALLBACK-HEALTH-RESPONSE] HTTP $code from $url")
                 resp.close()
                 true
             } catch (_: Exception) {
