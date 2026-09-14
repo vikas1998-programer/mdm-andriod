@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import com.rrv.mdm.dpc.R
+import com.rrv.mdm.dpc.RrvMdmApplication
 import com.rrv.mdm.dpc.databinding.ActivityRrvMdmHomeBinding
 import com.rrv.mdm.dpc.domain.model.ApplicationInfo
 import com.rrv.mdm.dpc.domain.model.CommandStatus
@@ -60,15 +61,23 @@ class RrvMdmHomeActivity : AppCompatActivity() {
     }
 
     private fun setupAppGrid() {
+        val app = application as? RrvMdmApplication
+        val policy = app?.repository?.getActivePolicy()
+        val customCols = policy?.launcherDesign?.gridColumns ?: 0
+
         val screenWidthDp = resources.configuration.screenWidthDp
         val isTablet = screenWidthDp >= 600
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-        val spanCount = when {
-            isTablet && isLandscape -> 6
-            isTablet -> 5
-            isLandscape -> 5
-            else -> 3 // Default portrait phone (matching Contoso reference)
+        val spanCount = if (customCols in 1..8) {
+            customCols
+        } else {
+            when {
+                isTablet && isLandscape -> 6
+                isTablet -> 5
+                isLandscape -> 5
+                else -> 3 // Default portrait phone
+            }
         }
 
         adapter = ManagedAppAdapter(
@@ -116,6 +125,11 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                 // Dynamic App Grid updates
                 launch {
                     viewModel.apps.collect { appList ->
+                        val currentPolicy = (application as? RrvMdmApplication)?.repository?.getActivePolicy()
+                        val customCols = currentPolicy?.launcherDesign?.gridColumns ?: 0
+                        if (customCols in 1..8 && (binding.rvAppGrid.layoutManager as? GridLayoutManager)?.spanCount != customCols) {
+                            binding.rvAppGrid.layoutManager = GridLayoutManager(this@RrvMdmHomeActivity, customCols)
+                        }
                         adapter.submitList(appList)
                         if (appList.isEmpty()) {
                             binding.layoutEmptyApps.visibility = View.VISIBLE

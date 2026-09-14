@@ -3,6 +3,7 @@ package com.rrv.mdm.dpc.mdm.device
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
+import android.app.admin.SystemUpdatePolicy
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -276,9 +277,6 @@ class DeviceManagementManager(private val context: Context) {
         }
     }
 
-    @Volatile
-    private var lastAppliedPolicyVersion: String? = null
-
     /**
      * Apply comprehensive Zero-Trust Policy onto device hardware and system.
      * Default-blocks and hides all unmanaged apps on the device (Alarm, Notes, etc.).
@@ -290,11 +288,7 @@ class DeviceManagementManager(private val context: Context) {
             return
         }
 
-        val policySignature = "${policy.version}_${policy.name}_${policy.applications.hashCode()}_${policy.allowedKioskPackages.hashCode()}"
-        if (!force && lastAppliedPolicyVersion == policySignature) {
-            RrvLog.d(TAG, "Policy $policySignature already applied — skipping redundant enforcement.")
-            return
-        }
+        RrvLog.i(TAG, "Enforcing policy profile '${policy.name}' (Version: ${policy.version}) directly to DPM hardware & system controls...")
 
         CoroutineScope(Dispatchers.Default).launch {
             try {
@@ -307,6 +301,9 @@ class DeviceManagementManager(private val context: Context) {
                 setUserRestriction(UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA, policy.sdCardDisabled)
                 setUserRestriction(UserManager.DISALLOW_UNMUTE_MICROPHONE, policy.microphoneDisabled)
                 (context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager)?.isMicrophoneMute = policy.microphoneDisabled
+                try {
+                    dpm.setStatusBarDisabled(adminComponent, policy.statusBarDisabled)
+                } catch (_: Exception) {}
 
                 // 2. Network Restrictions & Corporate Wi-Fi Governance
                 setUserRestriction(UserManager.DISALLOW_CONFIG_WIFI, policy.wifiConfigLock)
@@ -314,6 +311,17 @@ class DeviceManagementManager(private val context: Context) {
                 setUserRestriction(UserManager.DISALLOW_DATA_ROAMING, policy.dataRoamingDisabled)
                 setUserRestriction(UserManager.DISALLOW_AIRPLANE_MODE, policy.airplaneModeDisabled)
                 configureCorporateWifi(policy)
+
+                // Always-On VPN
+                try {
+                    if (!policy.alwaysOnVpnPackage.isNullOrBlank()) {
+                        dpm.setAlwaysOnVpnPackage(adminComponent, policy.alwaysOnVpnPackage, true)
+                    } else {
+                        dpm.setAlwaysOnVpnPackage(adminComponent, null, false)
+                    }
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "AlwaysOnVpnPackage configuration skipped: ${e.message}")
+                }
 
                 // 3. Anti-Tamper & Security System Controls
                 setUserRestriction(UserManager.DISALLOW_FACTORY_RESET, policy.factoryResetDisabled)
@@ -327,15 +335,78 @@ class DeviceManagementManager(private val context: Context) {
                 setUserRestriction(UserManager.DISALLOW_CROSS_PROFILE_COPY_PASTE, policy.clipboardDlpDisabled)
                 setUserRestriction(UserManager.DISALLOW_APPS_CONTROL, true) // Block Settings -> Apps bypass/modifications
 
-                // 3.5 Password Complexity Governance
-                if (policy.minPasswordLength > 0) {
+                // Auto-Time Enforced
+                try {
+                    dpm.setAutoTimeRequired(adminComponent, policy.autoTimeEnforced)
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "setAutoTimeRequired error: ${e.message}")
+                }
+
+                // Storage Encryption
+                if (policy.externalStorageEncryptionRequired) {
                     try {
+                        dpm.setStorageEncryption(adminComponent, true)
+                    } catch (e: Exception) {
+                        RrvLog.w(TAG, "setStorageEncryption error: ${e.message}")
+                    }
+                }
+
+                // 3.5 Password Complexity Governance
+                if (policy.minPasswordLength > 0 || policy.passwordQuality.isNotBlank()) {
+                    try {
+                        val quality = when (policy.passwordQuality.uppercase()) {
+                            "COMPLEX", "ALPHANUMERIC_COMPLEX" -> DevicePolicyManager.PASSWORD_QUALITY_COMPLEX
+                            "ALPHANUMERIC" -> DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC
+                            "NUMERIC_COMPLEX" -> DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX
+                            "NUMERIC" -> DevicePolicyManager.PASSWORD_QUALITY_NUMERIC
+                            "SOMETHING", "WEAK_BIOMETRIC" -> DevicePolicyManager.PASSWORD_QUALITY_SOMETHING
+                            "UNSPECIFIED" -> DevicePolicyManager.PASSWORD_QUALITY_UNSPECIFIED
+                            else -> DevicePolicyManager.PASSWORD_QUALITY_COMPLEX
+                        }
                         @Suppress("DEPRECATION")
-                        dpm.setPasswordQuality(adminComponent, DevicePolicyManager.PASSWORD_QUALITY_NUMERIC_COMPLEX)
-                        @Suppress("DEPRECATION")
-                        dpm.setPasswordMinimumLength(adminComponent, policy.minPasswordLength)
-                        dpm.setMaximumFailedPasswordsForWipe(adminComponent, policy.maxFailedAttempts)
-                    } catch (_: Exception) {}
+                        dpm.setPasswordQuality(adminComponent, quality)
+                        if (policy.minPasswordLength > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumLength(adminComponent, policy.minPasswordLength)
+                        }
+                        if (policy.maxFailedAttempts > 0) {
+                            dpm.setMaximumFailedPasswordsForWipe(adminComponent, policy.maxFailedAttempts)
+                        }
+                    } catch (e: Exception) {
+                        RrvLog.e(TAG, "Error applying password complexity policy: ${e.message}")
+                    }
+                }
+
+                // Keyguard Features (Camera & Notifications)
+                var keyguardFlags = 0
+                if (policy.keyguardCameraDisabled) {
+                    keyguardFlags = keyguardFlags or DevicePolicyManager.KEYGUARD_DISABLE_SECURE_CAMERA
+                }
+                if (policy.keyguardNotificationsDisabled) {
+                    keyguardFlags = keyguardFlags or DevicePolicyManager.KEYGUARD_DISABLE_SECURE_NOTIFICATIONS or DevicePolicyManager.KEYGUARD_DISABLE_UNREDACTED_NOTIFICATIONS
+                }
+                try {
+                    dpm.setKeyguardDisabledFeatures(adminComponent, keyguardFlags)
+                } catch (e: Exception) {
+                    RrvLog.e(TAG, "Error setting keyguard disabled features: ${e.message}")
+                }
+
+                // System Update Policy
+                try {
+                    when (policy.systemUpdatePolicy.uppercase()) {
+                        "AUTOMATIC", "AUTO" -> {
+                            dpm.setSystemUpdatePolicy(adminComponent, SystemUpdatePolicy.createAutomaticInstallPolicy())
+                        }
+                        "WINDOWED" -> {
+                            dpm.setSystemUpdatePolicy(adminComponent, SystemUpdatePolicy.createWindowedInstallPolicy(120, 360))
+                        }
+                        "POSTPONE", "POSTPONED" -> {
+                            dpm.setSystemUpdatePolicy(adminComponent, SystemUpdatePolicy.createPostponeInstallPolicy())
+                        }
+                        else -> {}
+                    }
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "SystemUpdatePolicy not supported: ${e.message}")
                 }
 
                 // 4. Anti-Uninstall MDM
@@ -504,8 +575,6 @@ class DeviceManagementManager(private val context: Context) {
                     val features = DevicePolicyManager.LOCK_TASK_FEATURE_HOME or DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
                     dpm.setLockTaskFeatures(adminComponent, features)
                 }
-
-                lastAppliedPolicyVersion = policySignature
 
                 // 10. Update Local Database with Whitelisted Apps
                 val app = context.applicationContext as? RrvMdmApplication

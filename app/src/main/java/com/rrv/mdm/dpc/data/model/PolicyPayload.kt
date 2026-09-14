@@ -43,9 +43,19 @@ data class PolicyPayload(
     @SerializedName("allowedKioskPackages") val allowedKioskPackages: List<String> = emptyList(),
 
     // Password & Lockout Governance
+    @SerializedName("passwordQuality") val passwordQuality: String = "COMPLEX",
     @SerializedName("minPasswordLength") val minPasswordLength: Int = 6,
     @SerializedName("maxFailedAttempts") val maxFailedAttempts: Int = 5,
     @SerializedName("lockoutDurationMinutes") val lockoutDurationMinutes: Int = 15,
+    @SerializedName("keyguardCameraDisabled") val keyguardCameraDisabled: Boolean = false,
+    @SerializedName("keyguardNotificationsDisabled") val keyguardNotificationsDisabled: Boolean = false,
+
+    // Additional Enterprise Policies
+    @SerializedName("alwaysOnVpnPackage") val alwaysOnVpnPackage: String? = null,
+    @SerializedName("autoTimeEnforced") val autoTimeEnforced: Boolean = true,
+    @SerializedName("systemUpdatePolicy") val systemUpdatePolicy: String = "WINDOWED",
+    @SerializedName("externalStorageEncryptionRequired") val externalStorageEncryptionRequired: Boolean = false,
+    @SerializedName("privateDnsEnforced") val privateDnsEnforced: Boolean = false,
 
     // Display & Screen Brightness Governance
     @SerializedName("screenBrightnessPercent") val screenBrightnessPercent: Int? = null,
@@ -80,6 +90,8 @@ data class PolicyPayload(
                 var factoryResetDisabled = base.factoryResetDisabled
                 var safeBootDisabled = base.safeBootDisabled
                 var developerOptionsDisabled = base.developerOptionsDisabled
+                var autoTimeEnforced = base.autoTimeEnforced
+                var systemUpdatePolicy = base.systemUpdatePolicy
 
                 var wifiDisabled = base.wifiDisabled
                 var wifiConfigLock = base.wifiConfigLock
@@ -87,6 +99,7 @@ data class PolicyPayload(
                 var wifiPassword = base.wifiPassword
                 var wifiSecurityType = base.wifiSecurityType
                 var wifiAutoConnect = base.wifiAutoConnect
+                var alwaysOnVpnPackage = base.alwaysOnVpnPackage
 
                 var tetheringDisabled = base.tetheringDisabled
                 var dataRoamingDisabled = base.dataRoamingDisabled
@@ -96,6 +109,8 @@ data class PolicyPayload(
                 var appUninstallDisabled = base.appUninstallDisabled
                 var unknownSourcesDisabled = base.unknownSourcesDisabled
                 var printingDisabled = base.printingDisabled
+                var externalStorageEncryptionRequired = base.externalStorageEncryptionRequired
+                var privateDnsEnforced = base.privateDnsEnforced
 
                 // Check nested hardware block
                 val hw = root["hardware"] as? Map<*, *>
@@ -118,6 +133,7 @@ data class PolicyPayload(
                     (net["wifiPassword"] as? String ?: net["wifi_password"] as? String ?: net["password"] as? String)?.let { wifiPassword = it }
                     (net["wifiSecurityType"] as? String ?: net["wifi_security_type"] as? String)?.let { wifiSecurityType = it }
                     (net["wifiAutoConnect"] as? Boolean ?: net["wifi_auto_connect"] as? Boolean)?.let { wifiAutoConnect = it }
+                    (net["alwaysOnVpnPackage"] as? String ?: net["always_on_vpn_package"] as? String)?.let { alwaysOnVpnPackage = it }
                     (net["tetheringDisabled"] as? Boolean ?: net["tethering_disabled"] as? Boolean)?.let { tetheringDisabled = it }
                     (net["dataRoamingDisabled"] as? Boolean ?: net["data_roaming_disabled"] as? Boolean)?.let { dataRoamingDisabled = it }
                     (net["airplaneModeDisabled"] as? Boolean ?: net["airplane_mode_disabled"] as? Boolean)?.let { airplaneModeDisabled = it }
@@ -129,23 +145,36 @@ data class PolicyPayload(
                     (sys["factoryResetDisabled"] as? Boolean ?: sys["factory_reset_disabled"] as? Boolean)?.let { factoryResetDisabled = it }
                     (sys["safeBootDisabled"] as? Boolean ?: sys["safe_boot_disabled"] as? Boolean)?.let { safeBootDisabled = it }
                     (sys["developerOptionsDisabled"] as? Boolean ?: sys["developer_options_disabled"] as? Boolean)?.let { developerOptionsDisabled = it }
+                    (sys["autoTimeEnforced"] as? Boolean ?: sys["auto_time_enforced"] as? Boolean)?.let { autoTimeEnforced = it }
+                    (sys["systemUpdatePolicy"] as? String ?: sys["system_update_policy"] as? String)?.let { systemUpdatePolicy = it }
                 }
 
                 // Check nested dlp block
                 val dlp = root["dlp"] as? Map<*, *>
                 if (dlp != null) {
                     (dlp["crossProfileCopyPasteDisabled"] as? Boolean ?: dlp["clipboardDlpDisabled"] as? Boolean)?.let { clipboardDlpDisabled = it }
-                    (dlp["usbMassStorageDisabled"] as? Boolean ?: dlp["external_media_disabled"] as? Boolean)?.let { sdCardDisabled = it }
                     (dlp["printingDisabled"] as? Boolean ?: dlp["printing_disabled"] as? Boolean)?.let { printingDisabled = it }
+                    (dlp["externalStorageEncryptionRequired"] as? Boolean ?: dlp["external_storage_encryption_required"] as? Boolean)?.let { externalStorageEncryptionRequired = it }
+                    (dlp["privateDnsEnforced"] as? Boolean ?: dlp["private_dns_enforced"] as? Boolean)?.let { privateDnsEnforced = it }
+                    if (hw == null) {
+                        (dlp["usbMassStorageDisabled"] as? Boolean ?: dlp["external_media_disabled"] as? Boolean)?.let { sdCardDisabled = it }
+                    }
                 }
 
                 // Check nested passcode block
                 val pass = root["passcode"] as? Map<*, *>
+                var passwordQuality = base.passwordQuality
                 var minPassLen = base.minPasswordLength
                 var maxAttempts = base.maxFailedAttempts
+                var keyguardCameraDisabled = base.keyguardCameraDisabled
+                var keyguardNotificationsDisabled = base.keyguardNotificationsDisabled
+
                 if (pass != null) {
+                    (pass["passwordQuality"] as? String ?: pass["password_quality"] as? String)?.let { passwordQuality = it }
                     (pass["minPasswordLength"] as? Number ?: pass["min_length"] as? Number)?.let { minPassLen = it.toInt() }
                     (pass["maxFailedAttemptsForWipe"] as? Number ?: pass["max_failed_attempts_wipe"] as? Number)?.let { maxAttempts = it.toInt() }
+                    (pass["keyguardCameraDisabled"] as? Boolean ?: pass["keyguard_camera_disabled"] as? Boolean)?.let { keyguardCameraDisabled = it }
+                    (pass["keyguardNotificationsDisabled"] as? Boolean ?: pass["keyguard_notifications_disabled"] as? Boolean)?.let { keyguardNotificationsDisabled = it }
                 }
 
                 // Check nested kiosk block
@@ -238,12 +267,15 @@ data class PolicyPayload(
                     factoryResetDisabled = factoryResetDisabled,
                     safeBootDisabled = safeBootDisabled,
                     developerOptionsDisabled = developerOptionsDisabled,
+                    autoTimeEnforced = autoTimeEnforced,
+                    systemUpdatePolicy = systemUpdatePolicy,
                     wifiDisabled = wifiDisabled,
                     wifiConfigLock = wifiConfigLock,
                     wifiSsid = wifiSsid,
                     wifiPassword = wifiPassword,
                     wifiSecurityType = wifiSecurityType,
                     wifiAutoConnect = wifiAutoConnect,
+                    alwaysOnVpnPackage = alwaysOnVpnPackage,
                     tetheringDisabled = tetheringDisabled,
                     dataRoamingDisabled = dataRoamingDisabled,
                     airplaneModeDisabled = airplaneModeDisabled,
@@ -251,9 +283,14 @@ data class PolicyPayload(
                     appUninstallDisabled = appUninstallDisabled,
                     unknownSourcesDisabled = unknownSourcesDisabled,
                     printingDisabled = printingDisabled,
+                    externalStorageEncryptionRequired = externalStorageEncryptionRequired,
+                    privateDnsEnforced = privateDnsEnforced,
                     applications = if (apps != null || root.containsKey("applications")) appList else base.applications,
+                    passwordQuality = passwordQuality,
                     minPasswordLength = minPassLen,
                     maxFailedAttempts = maxAttempts,
+                    keyguardCameraDisabled = keyguardCameraDisabled,
+                    keyguardNotificationsDisabled = keyguardNotificationsDisabled,
                     kioskModeEnabled = kioskMode,
                     allowedKioskPackages = allowedKiosk,
                     screenBrightnessPercent = brightness,
