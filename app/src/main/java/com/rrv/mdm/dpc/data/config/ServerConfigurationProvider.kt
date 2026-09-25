@@ -87,7 +87,7 @@ class ServerConfigurationProvider(private val context: Context) {
 
     fun hasValidConfiguration(): Boolean = _configFlow.value != null
 
-    fun getApiBaseUrl(): String? = _configFlow.value?.apiBaseUrl
+    fun getApiBaseUrl(): String? = _configFlow.value?.apiBaseUrl?.trimEnd('/')?.removeSuffix("/api/v1")
 
     fun getMqttServerUri(): String? = _configFlow.value?.mqtt?.serverUri
 

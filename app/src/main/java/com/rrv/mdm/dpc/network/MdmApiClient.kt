@@ -126,10 +126,13 @@ class MdmApiClient(private val context: Context) {
                                 // retain cleanServerUrl so device doesn't lose connectivity
                                 if ((serverConfig.apiBaseUrl.contains("localhost") || serverConfig.apiBaseUrl.contains("127.0.0.1")) &&
                                     !cleanServerUrl.contains("localhost") && !cleanServerUrl.contains("127.0.0.1")) {
-                                    serverConfig = serverConfig.copy(apiBaseUrl = cleanServerUrl)
+                                    val strippedUrl = cleanServerUrl.removeSuffix("/api/v1")
+                                    serverConfig = serverConfig.copy(apiBaseUrl = strippedUrl)
+                                } else {
+                                    serverConfig = serverConfig.copy(apiBaseUrl = serverConfig.apiBaseUrl.trimEnd('/').removeSuffix("/api/v1"))
                                 }
                                 configProvider.applyServerConfiguration(serverConfig, testConnectivity = false)
-                                repository.serverUrl = serverConfig.apiBaseUrl
+                                repository.serverUrl = serverConfig.apiBaseUrl.trimEnd('/').removeSuffix("/api/v1")
                                 repository.mqttBrokerHost = serverConfig.mqtt.host
                                 repository.mqttPort = serverConfig.mqtt.port
                                 RrvLog.i(TAG, "Dynamic server configuration applied: baseUrl=${serverConfig.apiBaseUrl}, broker=${serverConfig.mqtt.serverUri}")
@@ -139,12 +142,13 @@ class MdmApiClient(private val context: Context) {
                         } else {
                             // Synthesize dynamic server config from enrollment URL
                             try {
-                                val uri = java.net.URI(cleanServerUrl)
+                                val sanitizedBase = cleanServerUrl.removeSuffix("/api/v1")
+                                val uri = java.net.URI(sanitizedBase)
                                 val host = uri.host ?: "127.0.0.1"
                                 val isHttps = uri.scheme?.equals("https", ignoreCase = true) == true
                                 val mqttPort = if (isHttps) 8883 else 1883
                                 val dynamicConfig = com.rrv.mdm.dpc.data.config.ServerConfiguration(
-                                    apiBaseUrl = cleanServerUrl,
+                                    apiBaseUrl = sanitizedBase,
                                     mqtt = com.rrv.mdm.dpc.data.config.MqttConfiguration(
                                         host = host,
                                         port = mqttPort,
@@ -154,7 +158,7 @@ class MdmApiClient(private val context: Context) {
                                     configurationVersion = 1
                                 )
                                 configProvider.applyServerConfiguration(dynamicConfig, testConnectivity = false)
-                                repository.serverUrl = cleanServerUrl
+                                repository.serverUrl = sanitizedBase
                                 repository.mqttBrokerHost = host
                                 repository.mqttPort = mqttPort
                                 RrvLog.i(TAG, "Synthesized dynamic server configuration: baseUrl=$cleanServerUrl, broker=$host:$mqttPort")
