@@ -87,6 +87,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
     fun publishDeviceLog(entry: RrvLog.DeviceLogEntry) {
         if (!isConnected()) return
+        if (entry.tag == "MQTT-TRANSPORT" || entry.tag == "MdmMqttManager") return
         val deviceId = getEffectiveDeviceId()
         val topic = "rrv/devices/$deviceId/logs"
         val payload = gson.toJson(entry)
@@ -762,7 +763,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             }
             client.publish(topic, message)
         } catch (e: Exception) {
-            RrvLog.d(TAG, "Publish deferred for topic $topic (${e.message})")
+            android.util.Log.d(TAG, "Publish deferred for topic $topic (${e.message})")
         }
     }
 
