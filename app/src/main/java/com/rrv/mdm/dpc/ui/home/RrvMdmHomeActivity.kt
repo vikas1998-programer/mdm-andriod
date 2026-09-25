@@ -49,6 +49,23 @@ class RrvMdmHomeActivity : AppCompatActivity() {
             val activePolicy = app.repository.getActivePolicy()
             app.deviceManager.applyPolicy(activePolicy)
         }
+        applyScreenOrientation()
+
+        // Fetch latest policy profile asynchronously from server upon launching home
+        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+        if (devId.isNotBlank()) {
+            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                if (ok) {
+                    runOnUiThread {
+                        applyScreenOrientation()
+                        viewModel.refreshDeviceStatus()
+                        setupAppGrid()
+                    }
+                }
+            }
+        }
+
+        registerPolicyUpdateReceiver()
 
         // 2. Setup Responsive App Grid
         setupAppGrid()
@@ -58,6 +75,86 @@ class RrvMdmHomeActivity : AppCompatActivity() {
 
         // 4. Observe Reactive StateFlow Streams
         observeState()
+    }
+
+
+    private fun checkAdminLockStatus() {
+        val prefs = getSharedPreferences("rrv_admin_lock", android.content.Context.MODE_PRIVATE)
+        val isLocked = prefs.getBoolean("is_locked", false)
+        if (isLocked) {
+            val lockMsg = prefs.getString("lock_message", "This device has been locked by IT Administration.")
+            val phone = prefs.getString("lock_phone", null)
+            val lockIntent = Intent(this, com.rrv.mdm.dpc.ui.lock.AdminLockActivity::class.java).apply {
+                putExtra("message", lockMsg)
+                putExtra("phoneNumber", phone)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(lockIntent)
+        }
+    }
+
+    private fun checkPasswordComplianceAndForceChange() {
+        val app = application as? RrvMdmApplication ?: return
+        if (!app.deviceManager.isDeviceOwner()) return
+        val passPrefs = getSharedPreferences("rrv_passcode_policy", android.content.Context.MODE_PRIVATE)
+        val mustChange = passPrefs.getBoolean("must_change_default_password", false)
+        val dpm = app.deviceManager.devicePolicyManager
+        val isSufficient = try { dpm.isActivePasswordSufficient } catch (_: Exception) { true }
+
+        if (mustChange || !isSufficient) {
+            Toast.makeText(this, "Security Policy: Please set your screen password to comply with IT standards.", Toast.LENGTH_LONG).show()
+            try {
+                val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_SET_NEW_PASSWORD)
+                startActivity(intent)
+            } catch (e: Exception) {
+                com.rrv.mdm.dpc.util.RrvLog.w("RrvMdmHomeActivity", "Could not start ACTION_SET_NEW_PASSWORD: ${e.message}")
+            }
+            if (isSufficient && !mustChange) {
+                passPrefs.edit().putBoolean("must_change_default_password", false).apply()
+            }
+        }
+    }
+
+    private fun applyScreenOrientation() {
+        val app = application as? RrvMdmApplication ?: return
+        val activePolicy = app.repository.getActivePolicy()
+        val orient = activePolicy.screenOrientation.ifBlank { activePolicy.launcherDesign.screenOrientation }.ifBlank { "PORTRAIT" }
+        when (orient.uppercase().trim()) {
+            "PORTRAIT" -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "LANDSCAPE" -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            "REVERSE_PORTRAIT" -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            "REVERSE_LANDSCAPE" -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            "AUTO_ROTATE", "SENSOR", "AUTO" -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    private var policyUpdateReceiver: android.content.BroadcastReceiver? = null
+
+    private fun registerPolicyUpdateReceiver() {
+        if (policyUpdateReceiver != null) return
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                runOnUiThread {
+                    applyScreenOrientation()
+                    viewModel.refreshDeviceStatus()
+                    setupAppGrid()
+                }
+            }
+        }
+        val filter = android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(receiver, filter)
+        }
+        policyUpdateReceiver = receiver
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyScreenOrientation()
+        setupAppGrid()
     }
 
     private fun setupAppGrid() {
@@ -80,13 +177,24 @@ class RrvMdmHomeActivity : AppCompatActivity() {
             }
         }
 
-        adapter = ManagedAppAdapter(
-            onAppClick = { app -> handleAppLaunch(app) },
-            onAppLongClick = { app -> openAppDetails(app) }
-        )
+        if (!::adapter.isInitialized) {
+            adapter = ManagedAppAdapter(
+                onAppClick = { app -> handleAppLaunch(app) },
+                onAppLongClick = { app -> openAppDetails(app) }
+            )
+            binding.rvAppGrid.adapter = adapter
+        }
 
         binding.rvAppGrid.layoutManager = GridLayoutManager(this, spanCount)
-        binding.rvAppGrid.adapter = adapter
+        val currentList = viewModel.apps.value
+        adapter.submitList(currentList)
+        if (currentList.isEmpty()) {
+            binding.layoutEmptyApps.visibility = View.VISIBLE
+            binding.rvAppGrid.visibility = View.GONE
+        } else {
+            binding.layoutEmptyApps.visibility = View.GONE
+            binding.rvAppGrid.visibility = View.VISIBLE
+        }
     }
 
     private fun setupHeaderActions() {
@@ -130,7 +238,9 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                         if (customCols in 1..8 && (binding.rvAppGrid.layoutManager as? GridLayoutManager)?.spanCount != customCols) {
                             binding.rvAppGrid.layoutManager = GridLayoutManager(this@RrvMdmHomeActivity, customCols)
                         }
-                        adapter.submitList(appList)
+                        if (::adapter.isInitialized) {
+                            adapter.submitList(appList)
+                        }
                         if (appList.isEmpty()) {
                             binding.layoutEmptyApps.visibility = View.VISIBLE
                             binding.rvAppGrid.visibility = View.GONE
@@ -150,7 +260,7 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                         when (status.complianceLevel) {
                             ComplianceLevel.SECURE -> {
                                 binding.ivSecurityShield.setColorFilter(Color.parseColor("#10B981"))
-                                binding.pillCompliantBadge.text = "Compliant ✓"
+                                binding.pillCompliantBadge.text = "Compliant"
                                 binding.pillCompliantBadge.setTextColor(Color.parseColor("#10B981"))
                                 binding.pillCompliantBadge.setBackgroundResource(R.drawable.bg_status_badge_green)
                             }
@@ -161,7 +271,7 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                             }
                             ComplianceLevel.NON_COMPLIANT -> {
                                 binding.ivSecurityShield.setColorFilter(Color.parseColor("#EF4444"))
-                                binding.pillCompliantBadge.text = "Non-Compliant ⚠"
+                                binding.pillCompliantBadge.text = "Non-Compliant"
                                 binding.pillCompliantBadge.setTextColor(Color.parseColor("#EF4444"))
                             }
                             ComplianceLevel.OFFLINE -> {
@@ -283,19 +393,19 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         lastVolumeToast?.cancel()
 
         if (isMuted) {
-            val msg = "🔇 Volume Muted by IT Administrator (0%)\nHardware buttons restricted by Policy."
+            val msg = "Volume Muted by IT Administrator (0%)\nHardware buttons restricted by Policy."
             lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
             lastVolumeToast?.show()
-            com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "🚫 Hardware volume press rejected: Master volume is muted by IT admin.")
+            com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "Hardware volume press rejected: Master volume is muted by IT admin.")
             return
         }
 
         if (isLocked) {
             val keyName = if (isVolumeUp) "Volume Up (+)" else "Volume Down (-)"
-            val msg = "🔒 Volume Adjustment Restricted by IT Admin\nLevel locked at $currentPercent% ($keyName blocked by Policy)"
+            val msg = "Volume Adjustment Restricted by IT Admin\nLevel locked at $currentPercent% ($keyName blocked by Policy)"
             lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
             lastVolumeToast?.show()
-            com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "🚫 Hardware $keyName press rejected: DISALLOW_ADJUST_VOLUME restriction active.")
+            com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "Hardware $keyName press rejected: DISALLOW_ADJUST_VOLUME restriction active.")
             return
         }
 
@@ -312,22 +422,47 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         } else 0
 
         val keyName = if (isVolumeUp) "▲ Volume Raised" else "▼ Volume Lowered"
-        val msg = "🔊 $keyName: $newPercent% [User Control Allowed]"
+        val msg = "$keyName: $newPercent% [User Control Allowed]"
         lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
         lastVolumeToast?.show()
-        com.rrv.mdm.dpc.util.RrvLog.d("VolumeControl", "✓ Hardware volume button pressed: Media volume adjusted to $newPercent%")
+        com.rrv.mdm.dpc.util.RrvLog.d("VolumeControl", "Hardware volume button pressed: Media volume adjusted to $newPercent%")
     }
 
     override fun onResume() {
         super.onResume()
+        checkAdminLockStatus()
+        checkPasswordComplianceAndForceChange()
+        applyScreenOrientation()
         val app = application as com.rrv.mdm.dpc.RrvMdmApplication
         viewModel.refreshDeviceStatus()
+
+        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+        if (devId.isNotBlank()) {
+            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                if (ok) {
+                    runOnUiThread {
+                        viewModel.refreshDeviceStatus()
+                        setupAppGrid()
+                    }
+                }
+            }
+        }
 
         if (app.deviceManager.isDeviceOwner()) {
             val activePolicy = app.repository.getActivePolicy()
             if (activePolicy.kioskModeEnabled) {
                 app.lockTaskController.startKioskLock(this)
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        policyUpdateReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {}
+            policyUpdateReceiver = null
         }
     }
 }

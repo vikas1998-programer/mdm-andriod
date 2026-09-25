@@ -51,6 +51,7 @@ class MdmPersistentService : Service() {
 
     private var watchdogJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -69,15 +70,26 @@ class MdmPersistentService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, buildPersistentNotification())
         }
-        Log.i(TAG, "✅ RRV MDM Persistent Service started — agent is protected from kill.")
+        val app = application as RrvMdmApplication
+        registerNetworkCallback(app)
+        Log.i(TAG, "RRV MDM Persistent Service started — agent is protected from kill.")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val app = application as RrvMdmApplication
 
         if (!app.mqttManager.isConnected()) {
-            Log.i(TAG, "🔄 MQTT not connected — reconnecting...")
+            Log.i(TAG, "MQTT not connected — reconnecting...")
             app.mqttManager.connect()
+        }
+
+        // Trigger immediate policy fetch & command sync upon service startup
+        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+        if (devId.isNotBlank()) {
+            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                Log.i(TAG, "[Service Start] Immediate policy sync status: $ok")
+            }
+            app.mqttManager.fetchPendingCommandsFromServer()
         }
 
         startPolicyWatchdog(app)
@@ -86,64 +98,108 @@ class MdmPersistentService : Service() {
         return START_STICKY
     }
 
+    private fun registerNetworkCallback(app: RrvMdmApplication) {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return
+            val request = android.net.NetworkRequest.Builder()
+                .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    Log.i(TAG, "Network connectivity available — triggering immediate policy sync & MQTT connect.")
+                    if (!app.mqttManager.isConnected()) {
+                        app.mqttManager.connect()
+                    }
+                    val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+                    if (devId.isNotBlank()) {
+                        app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                            Log.i(TAG, "[Network Available] Policy fetch status: $ok")
+                        }
+                        app.mqttManager.fetchPendingCommandsFromServer()
+                    }
+                }
+            }
+            cm.registerNetworkCallback(request, callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not register network callback: ${e.message}")
+        }
+    }
+
     private fun startPeriodicHeartbeat(app: RrvMdmApplication) {
         heartbeatJob?.cancel()
         heartbeatJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
-                delay(60_000L) // Health check interval every 60 seconds
                 try {
                     if (app.repository.isEnrolled || app.deviceManager.isDeviceOwner()) {
-                        if (!app.mqttManager.isConnected()) {
+                        if (app.mqttManager.isConnected()) {
+                            app.mqttManager.publishTelemetry(null, true)
+                        } else {
                             // MQTT offline fallback: Transmit REST heartbeat and trigger reconnect
                             val bm = getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
                             val batteryPct = bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
                             val isCharging = bm?.isCharging ?: false
-                            val deviceId = app.repository.deviceId
+                            val deviceId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
                             if (deviceId.isNotBlank()) {
                                 app.apiClient.sendHeartbeat(deviceId, batteryPct, isCharging)
                             }
                             Log.d(TAG, "MQTT disconnected — REST fallback heartbeat sent, reconnecting MQTT...")
                             app.mqttManager.connect()
                         }
-                        // When MQTT is connected, MdmMqttManager's internal loop streams real-time telemetry,
-                        // eliminating duplicate packet overhead.
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Persistent service heartbeat watchdog exception: ${e.message}")
+                    Log.w(TAG, "Persistent service heartbeat tick exception: ${e.message}")
                 }
+                delay(45_000L) // Transmit status & telemetry to MDM server every 45 seconds
             }
         }
-        Log.i(TAG, "⏰ MDM heartbeat watchdog loop active.")
+        Log.i(TAG, "45-second high-frequency device telemetry heartbeat loop active.")
     }
 
     private fun startPolicyWatchdog(app: RrvMdmApplication) {
         watchdogJob?.cancel()
         watchdogJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
-                delay(5 * 60 * 1000L)
                 try {
+                    val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
                     if (!app.mqttManager.isConnected()) {
-                        Log.w(TAG, "⚠️ Watchdog: MQTT disconnected — reconnecting...")
+                        Log.i(TAG, "[15-Min REST Fallback] MQTT offline — executing 15-minute periodic REST sync for commands and policy...")
                         app.mqttManager.connect()
+                        if (devId.isNotBlank()) {
+                            app.mqttManager.fetchPendingCommandsFromServer()
+                            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                                Log.d(TAG, "[15-Min REST Fallback] Policy sync result: $ok")
+                            }
+                        }
+                    } else {
+                        Log.d(TAG, "[Watchdog] MQTT is active and connected.")
                     }
-                    if (app.policyManager.isDeviceOwner() && app.repository.isEnrolled) {
+
+                    if (app.policyManager.isDeviceOwner() && (app.repository.isEnrolled || app.repository.deviceId.isNotBlank())) {
                         val policy = app.repository.getActivePolicy()
-                        Log.d(TAG, "🔒 Watchdog: Reapplying policy [${policy.name}]...")
+                        Log.d(TAG, "Watchdog: Reapplying policy [${policy.name}] to hardware controls...")
                         app.policyManager.applyPolicy(policy)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Watchdog error: ${e.message}")
                 }
+                delay(15 * 60 * 1000L) // 15-minute REST fallback interval
             }
         }
-        Log.i(TAG, "🐶 Policy watchdog started — reapplying restrictions every 5 min.")
+        Log.i(TAG, "Policy watchdog active — 15-minute fallback poll and periodic enforcement.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         watchdogJob?.cancel()
         heartbeatJob?.cancel()
-        Log.w(TAG, "⚠️ MDM Persistent Service destroyed — START_STICKY will auto-restart.")
+        try {
+            networkCallback?.let {
+                val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                cm?.unregisterNetworkCallback(it)
+            }
+        } catch (_: Exception) {}
+        Log.w(TAG, "MDM Persistent Service destroyed — START_STICKY will auto-restart.")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

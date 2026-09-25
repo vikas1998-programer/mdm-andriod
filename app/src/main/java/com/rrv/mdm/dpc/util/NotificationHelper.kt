@@ -30,16 +30,16 @@ object NotificationHelper {
 
             val details = buildString {
                 append("Profile: ${policy.name}\n")
-                append("• Camera: ${if (policy.cameraDisabled) "Blocked ❌" else "Enabled ✅"}\n")
-                append("• Bluetooth: ${if (policy.bluetoothDisabled) "Blocked ❌" else "Enabled ✅"}\n")
-                append("• Screenshots: ${if (policy.screenCaptureDisabled) "Blocked ❌" else "Allowed ✅"}\n")
-                append("• Allowed Apps: ${policy.allowedKioskPackages.size} packages")
+                append("- Camera: ${if (policy.cameraDisabled) "Disabled" else "Enabled"}\n")
+                append("- Bluetooth: ${if (policy.bluetoothDisabled) "Disabled" else "Enabled"}\n")
+                append("- Screenshots: ${if (policy.screenCaptureDisabled) "Disabled" else "Allowed"}\n")
+                append("- Allowed Apps: ${policy.allowedKioskPackages.size} packages")
             }
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("🛡️ Policy Enforced: ${policy.name}")
-                .setContentText("Camera: ${if (policy.cameraDisabled) "Blocked" else "Allowed"} | Bluetooth: ${if (policy.bluetoothDisabled) "Blocked" else "Allowed"}")
+                .setContentTitle("Policy Enforced: ${policy.name}")
+                .setContentText("Camera: ${if (policy.cameraDisabled) "Disabled" else "Enabled"} | Bluetooth: ${if (policy.bluetoothDisabled) "Disabled" else "Enabled"}")
                 .setStyle(NotificationCompat.BigTextStyle().bigText(details))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)

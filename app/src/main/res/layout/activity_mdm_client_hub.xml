@@ -32,7 +32,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🛡️"
+                android:text=""
                 android:textSize="20sp"
                 android:layout_marginEnd="8dp" />
 
@@ -122,7 +122,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🔍"
+                    android:text=""
                     android:textSize="14sp"
                     android:layout_marginEnd="8dp" />
 
@@ -170,7 +170,7 @@
                         android:id="@+id/pillFilterMandatory"
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
-                        android:text="⚡ Mandatory"
+                        android:text="Mandatory"
                         android:textColor="#94A3B8"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
@@ -184,7 +184,7 @@
                         android:id="@+id/pillFilterPrivate"
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
-                        android:text="📦 Private APKs"
+                        android:text="Private APKs"
                         android:textColor="#94A3B8"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
@@ -198,7 +198,7 @@
                         android:id="@+id/pillFilterSystem"
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
-                        android:text="📱 System &amp; OEM"
+                        android:text="System &amp; OEM"
                         android:textColor="#94A3B8"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
@@ -230,7 +230,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🛍️"
+                    android:text=""
                     android:textSize="44sp" />
 
                 <TextView
@@ -332,7 +332,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🛡️"
+                            android:text=""
                             android:textSize="16sp"
                             android:layout_marginEnd="10dp" />
 
@@ -382,7 +382,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🛡️ POLICY PROFILE"
+                            android:text="POLICY PROFILE"
                             android:textColor="#38BDF8"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-black" />
@@ -424,7 +424,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🛍️ ASSIGNED APPS"
+                            android:text="ASSIGNED APPS"
                             android:textColor="#38BDF8"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-black" />
@@ -442,7 +442,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Tap to View ➔"
+                            android:text="Tap to View ->"
                             android:textColor="#38BDF8"
                             android:textSize="10sp"
                             android:layout_marginTop="2dp" />
@@ -455,7 +455,7 @@
                     android:id="@+id/btnDashboardSyncNow"
                     android:layout_width="match_parent"
                     android:layout_height="44dp"
-                    android:text="🔄 Sync Policy &amp; Telemetry On-Demand"
+                    android:text="Sync Policy &amp; Telemetry On-Demand"
                     android:textColor="#FFFFFF"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-bold"
@@ -501,7 +501,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🔋"
+                            android:text=""
                             android:textSize="20sp" />
 
                         <TextView
@@ -535,7 +535,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🧠"
+                            android:text=""
                             android:textSize="20sp" />
 
                         <TextView
@@ -586,7 +586,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="✅"
+                            android:text=""
                             android:textSize="14sp"
                             android:layout_marginEnd="8dp" />
                         <TextView
@@ -616,7 +616,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="🚫"
+                            android:text=""
                             android:textSize="14sp"
                             android:layout_marginEnd="8dp" />
                         <TextView
@@ -646,7 +646,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="✅"
+                            android:text=""
                             android:textSize="14sp"
                             android:layout_marginEnd="8dp" />
                         <TextView
@@ -672,7 +672,7 @@
                     android:id="@+id/btnExportDiagLogs"
                     android:layout_width="match_parent"
                     android:layout_height="44dp"
-                    android:text="📜 View Live Audit &amp; Event Logs"
+                    android:text="View Live Audit &amp; Event Logs"
                     android:textColor="#FFFFFF"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-bold"
@@ -709,7 +709,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🏠"
+                android:text=""
                 android:textSize="18sp" />
 
             <TextView
@@ -737,7 +737,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🛍️"
+                android:text=""
                 android:textSize="18sp" />
 
             <TextView
@@ -765,7 +765,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="📊"
+                android:text=""
                 android:textSize="18sp" />
 
             <TextView

@@ -33,6 +33,8 @@
     <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:name=".RrvMdmApplication"
@@ -100,6 +102,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Time-Fence & Scheduled Nightly Curfew Transition Alarm Receiver -->
+        <receiver
+            android:name=".receiver.TimeFenceAlarmReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.rrv.mdm.ACTION_TIME_FENCE_TRANSITION" />
+            </intent-filter>
+        </receiver>
+
         <!-- ======================================================== -->
         <!-- 2. Foreground Location & Geofence Tracker Service       -->
         <!-- ======================================================== -->
@@ -148,6 +160,7 @@
             android:excludeFromRecents="false"
             android:resumeWhilePausing="true"
             android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:theme="@style/Theme.RrvMdmDpc">
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
@@ -200,6 +213,18 @@
             android:name=".ui.admin.AdminDiagnosticActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+
+        <!-- ======================================================== -->
+        <!-- 7. Admin-Exclusive Lockdown & Lost Mode Activity          -->
+        <!-- ======================================================== -->
+        <activity
+            android:name=".ui.lock.AdminLockActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.RrvMdmDpc" />
 
     </application>
 </manifest>

@@ -13,7 +13,7 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            Log.i("BootReceiver", "⚡ Boot complete — reinitializing RRV MDM agent...")
+            Log.i("BootReceiver", "Boot complete — reinitializing RRV MDM agent...")
             val app = context.applicationContext as RrvMdmApplication
 
             if (!app.repository.isEnrolled) {
@@ -40,7 +40,7 @@ class BootReceiver : BroadcastReceiver() {
                 app.lockTaskController.setAsDefaultHomeLauncher()
                 app.policyManager.enforceBaselineSecurity()
                 app.deviceManager.applyPolicy(app.repository.getActivePolicy())
-                Log.i("BootReceiver", "✅ Zero-Trust Policy and Home Launcher reapplied on boot.")
+                Log.i("BootReceiver", "Zero-Trust Policy and Home Launcher reapplied on boot.")
             }
 
             // 5. Bring RRV MDM Managed Launcher to front
@@ -49,8 +49,12 @@ class BootReceiver : BroadcastReceiver() {
             }
             context.startActivity(launcherIntent)
 
-            // 6. Fetch any pending commands missed while device was off
+            // 6. Fetch any pending commands and latest policy missed while device was off
             app.mqttManager.fetchPendingCommandsFromServer()
+            val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+            if (devId.isNotBlank()) {
+                app.apiClient.fetchAndApplyPolicy(devId)
+            }
         }
     }
 }

@@ -47,13 +47,13 @@ class AdminDiagnosticActivity : AppCompatActivity() {
         binding.btnForceMqttSync.setOnClickListener {
             app.mqttManager.publishTelemetry(null, true)
             binding.tvDiagnosticLogs.text = logs.toString() + "\n" + com.rrv.mdm.dpc.util.RrvLog.getFormattedLogs()
-            Toast.makeText(this, "📡 Telemetry published via MQTT topic!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Telemetry published via MQTT topic!", Toast.LENGTH_SHORT).show()
         }
 
         binding.btnExitKioskMode.setOnClickListener {
             com.rrv.mdm.dpc.util.RrvLog.kiosk("Admin unlocked and exited Kiosk LockTask mode.")
             app.lockTaskController.stopKioskLock(this)
-            Toast.makeText(this, "🔓 LockTask Mode Exited.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "LockTask Mode Exited.", Toast.LENGTH_LONG).show()
             finish()
         }
     }

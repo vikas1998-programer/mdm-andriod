@@ -8,11 +8,28 @@ android {
     namespace = "com.rrv.mdm.dpc"
     compileSdk = 34
 
-    val serverHost = project.findProperty("SERVER_HOST") as? String ?: "169.58.239.251"
-    val apiPort = (project.findProperty("BACKEND_PORT") as? String)?.toIntOrNull() ?: 8085
-    val mqttPort = (project.findProperty("MQTT_PORT") as? String)?.toIntOrNull() ?: 7000
-    val mqttTlsPort = (project.findProperty("MQTT_TLS_PORT") as? String)?.toIntOrNull() ?: 7883
-    val portalPort = (project.findProperty("PORTAL_PORT") as? String)?.toIntOrNull() ?: 3000
+    val mdmEnv = (project.findProperty("MDM_ENV") as? String ?: "prod").lowercase()
+    val isDev = mdmEnv == "dev"
+
+    val serverHost = project.findProperty("SERVER_HOST") as? String 
+        ?: (project.findProperty(if (isDev) "DEV_SERVER_HOST" else "PROD_SERVER_HOST") as? String) 
+        ?: if (isDev) "10.0.2.2" else "169.58.239.251"
+
+    val apiPort = (project.findProperty("BACKEND_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_BACKEND_PORT" else "PROD_BACKEND_PORT") as? String)?.toIntOrNull()
+        ?: if (isDev) 8080 else 8088
+
+    val mqttPort = (project.findProperty("MQTT_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_MQTT_PORT" else "PROD_MQTT_PORT") as? String)?.toIntOrNull()
+        ?: 1883
+
+    val mqttTlsPort = (project.findProperty("MQTT_TLS_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_MQTT_TLS_PORT" else "PROD_MQTT_TLS_PORT") as? String)?.toIntOrNull()
+        ?: 8883
+
+    val portalPort = (project.findProperty("PORTAL_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_PORTAL_PORT" else "PROD_PORTAL_PORT") as? String)?.toIntOrNull()
+        ?: 4200
 
     defaultConfig {
         applicationId = "com.rrv.mdm.dpc"

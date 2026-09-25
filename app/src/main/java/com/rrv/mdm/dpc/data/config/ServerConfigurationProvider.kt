@@ -168,7 +168,7 @@ class ServerConfigurationProvider(private val context: Context) {
         prefs.edit().putString(KEY_CURRENT_CONFIG, json).apply()
         _configFlow.value = newConfig
 
-        RrvLog.i(TAG, "✅ Applied Server Configuration v${newConfig.configurationVersion} [Env: ${newConfig.environment}, BaseUrl: ${newConfig.apiBaseUrl}, MQTT: ${newConfig.mqtt.serverUri}]")
+        RrvLog.i(TAG, "Applied Server Configuration v${newConfig.configurationVersion} [Env: ${newConfig.environment}, BaseUrl: ${newConfig.apiBaseUrl}, MQTT: ${newConfig.mqtt.serverUri}]")
 
         // Notify subscribers (MQTT Client, REST Engine, Policy Sync)
         for (listener in listeners) {
@@ -196,7 +196,7 @@ class ServerConfigurationProvider(private val context: Context) {
             val lkgConfig = gson.fromJson(lkgJson, ServerConfiguration::class.java)
             prefs.edit().putString(KEY_CURRENT_CONFIG, lkgJson).apply()
             _configFlow.value = lkgConfig
-            RrvLog.w(TAG, "⚠️ Rolled back to Last-Known-Good Configuration v${lkgConfig.configurationVersion} [${lkgConfig.apiBaseUrl}]")
+            RrvLog.w(TAG, "Rolled back to Last-Known-Good Configuration v${lkgConfig.configurationVersion} [${lkgConfig.apiBaseUrl}]")
 
             for (listener in listeners) {
                 try {
@@ -235,7 +235,7 @@ class ServerConfigurationProvider(private val context: Context) {
             val resp = client.newCall(req).execute()
             val code = resp.code
             val isSuccess = resp.isSuccessful || code in 200..499
-            RrvLog.d(TAG, "📥 [HEALTH-CHECK-RESPONSE] HTTP $code from $cleanUrl/api/v1/health (Reachable: $isSuccess)")
+            RrvLog.d(TAG, "[HEALTH-CHECK-RESPONSE] HTTP $code from $cleanUrl/api/v1/health (Reachable: $isSuccess)")
             resp.close()
             isSuccess
         } catch (e: Exception) {
@@ -249,7 +249,7 @@ class ServerConfigurationProvider(private val context: Context) {
                     .build()
                 val resp = client.newCall(req).execute()
                 val code = resp.code
-                RrvLog.d(TAG, "📥 [FALLBACK-HEALTH-RESPONSE] HTTP $code from $url")
+                RrvLog.d(TAG, "[FALLBACK-HEALTH-RESPONSE] HTTP $code from $url")
                 resp.close()
                 true
             } catch (_: Exception) {

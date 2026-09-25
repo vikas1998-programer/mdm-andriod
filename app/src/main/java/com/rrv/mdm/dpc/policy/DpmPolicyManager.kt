@@ -1,4 +1,3 @@
-
 package com.rrv.mdm.dpc.policy
 
 import com.rrv.mdm.dpc.mdm.device.DeviceManagementManager

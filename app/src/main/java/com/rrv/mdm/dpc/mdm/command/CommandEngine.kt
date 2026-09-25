@@ -32,11 +32,17 @@ class LockDeviceExecutor : CommandExecutor {
     override fun toString(): String = "LockDeviceExecutor"
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
-        val ok = app.deviceManager.lockScreenNow()
-        NotificationHelper.showCommandNotification(context, "🔒 Remote Lock Executed", "Device screen locked by IT Administrator.")
+        val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
+        val adminExclusive = map?.get("adminLock") == true || map?.get("adminExclusive") == true || map?.get("exclusive") == true
+        val message = map?.get("message")?.toString() ?: "This device has been locked by organization security. Contact IT to unlock."
+        val phone = map?.get("phoneNumber")?.toString() ?: map?.get("phone")?.toString()
+        val adminPin = map?.get("adminPin")?.toString() ?: map?.get("adminUnlockPin")?.toString()
+
+        val ok = app.deviceManager.lockScreenNow(adminExclusive, message, phone, adminPin)
+        NotificationHelper.showCommandNotification(context, "Remote Lock Executed", if (adminExclusive) "Admin-Exclusive Lock Engaged." else "Device screen locked by IT Administrator.")
         context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_LOCKED"))
         return if (ok) {
-            ExecutionResult(true, "Screen locked immediately.")
+            ExecutionResult(true, if (adminExclusive) "Admin-Exclusive Lock engaged. User unlock restricted." else "Screen locked immediately.")
         } else {
             ExecutionResult(false, "DevicePolicyManager failed to lock screen.")
         }
@@ -45,9 +51,11 @@ class LockDeviceExecutor : CommandExecutor {
 
 class UnlockDeviceExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
-        NotificationHelper.showCommandNotification(context, "🔓 Device Unlocked", "Remote unlock issued by IT Administrator.")
+        val app = context.applicationContext as RrvMdmApplication
+        app.deviceManager.unlockDevice()
+        NotificationHelper.showCommandNotification(context, "Device Unlocked", "Remote unlock issued by IT Administrator.")
         context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED"))
-        return ExecutionResult(true, "Device unlocked successfully.")
+        return ExecutionResult(true, "Device unlocked and AdminLockActivity dismissed successfully.")
     }
 }
 
@@ -67,13 +75,16 @@ class ResetPasscodeExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
         val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
-        val newPin = map?.get("newPin")?.toString() ?: map?.get("pin")?.toString() ?: ""
+        val newPin = map?.get("newPin")?.toString() ?: map?.get("pin")?.toString() ?: map?.get("defaultPassword")?.toString() ?: ""
+        val requireChange = (map?.get("requirePasswordChange") as? Boolean) ?: (map?.get("requireChange") as? Boolean) ?: true
+
         if (newPin.isBlank()) {
             return ExecutionResult(false, "Missing newPin in RESET_PIN payload.")
         }
-        val ok = app.deviceManager.resetPassword(newPin)
+        val ok = app.deviceManager.resetPassword(newPin, requireChange)
         return if (ok) {
-            ExecutionResult(true, "Passcode reset successfully.")
+            val changeNotice = if (requireChange) " User will be forced to change passcode on next unlock conforming to Password Policy." else ""
+            ExecutionResult(true, "Passcode reset to default screen PIN successfully.$changeNotice")
         } else {
             ExecutionResult(false, "Failed to reset passcode via DPM.")
         }
@@ -138,11 +149,9 @@ class PolicyUpdateExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
         val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
-        val configurationId = map?.get("configurationId")?.toString() ?: map?.get("policyId")?.toString()
-        val policyHash = map?.get("policyHash")?.toString()
         val rawPayloadJson = map?.get("payloadJson")?.toString()
 
-        // If inline payload contains full policy structure
+        // 1. If inline payload contains full policy structure, enforce immediately
         if (!rawPayloadJson.isNullOrBlank() && rawPayloadJson != "{}" && (rawPayloadJson.contains("name") || rawPayloadJson.contains("passcode") || rawPayloadJson.contains("network") || rawPayloadJson.contains("applications") || rawPayloadJson.contains("hardware"))) {
             val parsed = PolicyPayload.fromJson(rawPayloadJson)
             app.repository.saveActivePolicy(parsed)
@@ -152,17 +161,12 @@ class PolicyUpdateExecutor : CommandExecutor {
             return ExecutionResult(true, "Policy profile '${parsed.name}' enforced successfully.")
         }
 
-        // Trigger Signal via MQTT -> Fetch full policy payload from REST API (pass currentHash = null to force fresh retrieval and bypass 304 cache)
-        val deviceId = app.mqttManager.getEffectiveDeviceId()
+        // 2. Trigger Signal via MQTT -> Fetch canonical policy payload from REST API
+        val deviceId = app.mqttManager.getEffectiveDeviceId().ifBlank { app.repository.deviceId }
         val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        if (!configurationId.isNullOrBlank()) {
-            app.apiClient.fetchAndApplyPolicyById(configurationId, currentHash = null) { success ->
-                deferred.complete(success)
-            }
-        } else {
-            app.apiClient.fetchAndApplyPolicy(deviceId, currentHash = null) { success ->
-                deferred.complete(success)
-            }
+        RrvLog.i("PolicyUpdateExecutor", "Fetching latest policy for device '$deviceId'...")
+        app.apiClient.fetchAndApplyPolicy(deviceId, currentHash = null) { success ->
+            deferred.complete(success)
         }
 
         val ok = try {
@@ -170,7 +174,7 @@ class PolicyUpdateExecutor : CommandExecutor {
         } catch (_: Exception) { false }
 
         return if (ok) {
-            ExecutionResult(true, "Policy profile fetched via REST API and enforced successfully.")
+            ExecutionResult(true, "Policy profile fetched via REST API and enforced successfully in real-time.")
         } else {
             ExecutionResult(false, "Failed to fetch or apply policy profile from server.")
         }
@@ -196,7 +200,7 @@ class MessageExecutor : CommandExecutor {
             timestamp = System.currentTimeMillis()
         )
         app.repositoryImpl.addMessage(adminMsg)
-        NotificationHelper.showCommandNotification(context, "📢 $title", message)
+        NotificationHelper.showCommandNotification(context, title, message)
         return ExecutionResult(true, "Admin message received and stored.")
     }
 }
@@ -205,7 +209,13 @@ class WifiExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
         val enable = map?.get("enable") == true || command.commandType.contains("ENABLE")
-        return ExecutionResult(true, "Wi-Fi state configured to: $enable.")
+        val app = context.applicationContext as RrvMdmApplication
+        val ok = app.deviceManager.setWifiEnabled(enable)
+        return if (ok) {
+            ExecutionResult(true, "Wi-Fi state configured to: $enable.")
+        } else {
+            ExecutionResult(false, "Failed to configure Wi-Fi state.")
+        }
     }
 }
 
@@ -264,6 +274,19 @@ class DiagnosticPingExecutor : CommandExecutor {
     }
 }
 
+class FetchLogsExecutor : CommandExecutor {
+    override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
+        val app = context.applicationContext as RrvMdmApplication
+        val logs = RrvLog.getRawLogs()
+        for (entry in logs.takeLast(50)) {
+            try {
+                app.mqttManager.publishDeviceLog(entry)
+            } catch (_: Exception) {}
+        }
+        return ExecutionResult(true, "Device logs fetched (${logs.size} entries available in diagnostic buffer).")
+    }
+}
+
 class WipeDeviceExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
@@ -272,7 +295,7 @@ class WipeDeviceExecutor : CommandExecutor {
         }
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
 
-        RrvLog.w("WipeDeviceExecutor", "⚠️ FACTORY RESET / ENTERPRISE WIPE INITIATED BY IT ADMIN!")
+        RrvLog.w("WipeDeviceExecutor", "Factory reset initiated by IT Administrator.")
 
         // Report ACK first before wiping hardware storage
         app.mqttManager.publishCommandAck(command.commandId, "EXECUTED", "Factory reset initiated.")
@@ -311,7 +334,7 @@ class SetBrightnessExecutor : CommandExecutor {
             app.deviceManager.setAutoBrightness(false)
             brightOk = app.deviceManager.setScreenBrightness(brightness)
             if (brightOk) {
-                NotificationHelper.showCommandNotification(context, "🔆 Screen Brightness", "Screen brightness adjusted to $brightness% by administrator.")
+                NotificationHelper.showCommandNotification(context, "Screen Brightness", "Screen brightness adjusted to $brightness% by administrator.")
                 return ExecutionResult(true, "Screen brightness set to $brightness%.")
             } else {
                 return ExecutionResult(false, "Failed to set screen brightness: android.permission.WRITE_SETTINGS is required.")
@@ -386,11 +409,11 @@ class SetVolumeExecutor : CommandExecutor {
             app.repository.saveActivePolicy(updatedPolicy)
         } catch (_: Exception) {}
 
-        val lockDesc = if (lockAdjust == true) " [Buttons Locked 🔒]" else if (lockAdjust == false) " [Buttons Unlocked 🔓]" else ""
-        val muteDesc = if (muted == true) " [Master Muted 🔇]" else ""
+        val lockDesc = if (lockAdjust == true) " [Buttons Locked]" else if (lockAdjust == false) " [Buttons Unlocked]" else ""
+        val muteDesc = if (muted == true) " [Master Muted]" else ""
         NotificationHelper.showCommandNotification(
             context,
-            "🔊 Audio Volume Configured",
+            "Audio Volume Configured",
             "Media: ${mediaVol ?: "—"}%, Ring: ${ringVol ?: "—"}%, Alarm: ${alarmVol ?: "—"}%$lockDesc$muteDesc"
         )
         return ExecutionResult(true, "Volume levels successfully updated (Media: ${mediaVol ?: "unchanged"}%, Ring: ${ringVol ?: "unchanged"}%, Alarm: ${alarmVol ?: "unchanged"}%$lockDesc$muteDesc).")
@@ -404,7 +427,7 @@ class TriggerAlarmExecutor : CommandExecutor {
         val duration = (map?.get("durationSeconds") as? Number ?: map?.get("duration") as? Number)?.toInt() ?: 10
 
         app.deviceManager.triggerAlarmSound(duration)
-        NotificationHelper.showCommandNotification(context, "🚨 High-Decibel Siren Alert", "Remote alarm siren triggered by IT administrator.")
+        NotificationHelper.showCommandNotification(context, "High-Decibel Siren Alert", "Remote alarm siren triggered by IT administrator.")
         return ExecutionResult(true, "Alarm siren sound triggered for $duration seconds at maximum volume.")
     }
 }
@@ -419,7 +442,7 @@ class SetScreenTimeoutExecutor : CommandExecutor {
             ?: map?.get("timeout") as? Number)?.toInt() ?: 300
 
         app.deviceManager.setScreenTimeout(timeoutSec)
-        NotificationHelper.showCommandNotification(context, "⏰ Screen Timeout Configured", "Display timeout set to $timeoutSec seconds.")
+        NotificationHelper.showCommandNotification(context, "Screen Timeout Configured", "Display timeout set to $timeoutSec seconds.")
         return ExecutionResult(true, "Screen timeout configured to $timeoutSec seconds.")
     }
 }
@@ -432,13 +455,14 @@ class LostModeExecutor : CommandExecutor {
             val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
             val message = map?.get("message")?.toString() ?: "This device has been marked as LOST by IT Administration."
             val phone = map?.get("phoneNumber")?.toString() ?: map?.get("phone")?.toString()
-            app.deviceManager.enableLostMode(message, phone)
-            NotificationHelper.showCommandNotification(context, "🛡️ Lost Mode Engaged", message)
-            return ExecutionResult(true, "Lost Mode activated on device.")
+            val adminPin = map?.get("adminPin")?.toString() ?: map?.get("adminUnlockPin")?.toString()
+            app.deviceManager.enableLostMode(message, phone, adminPin)
+            NotificationHelper.showCommandNotification(context, "Admin Lockout Engaged", message)
+            return ExecutionResult(true, "Admin-Exclusive Lost Mode activated on device.")
         } else {
             app.deviceManager.disableLostMode()
-            NotificationHelper.showCommandNotification(context, "🟢 Lost Mode Dismissed", "Device returned to normal operating state.")
-            return ExecutionResult(true, "Lost Mode dismissed.")
+            NotificationHelper.showCommandNotification(context, "Lockout Dismissed", "Device returned to normal operating state.")
+            return ExecutionResult(true, "Admin Lockout dismissed successfully.")
         }
     }
 }
@@ -511,7 +535,7 @@ class CommandProcessor(
         "LOCATION_REQUEST" to LocationRequestExecutor(),
         "REQUEST_LOCATION" to LocationRequestExecutor(),
         "REQUEST_TELEMETRY" to LocationRequestExecutor(),
-        "FETCH_LOGS" to DiagnosticPingExecutor(),
+        "FETCH_LOGS" to FetchLogsExecutor(),
         "DIAGNOSTIC_PING" to DiagnosticPingExecutor(),
         "PING" to DiagnosticPingExecutor(),
         "FULL_WIPE" to WipeDeviceExecutor(),
@@ -545,12 +569,12 @@ class CommandProcessor(
             // Step 1: Validate and check for duplicates
             val isNew = repository.recordCommandReceived(command)
             if (!isNew) {
-                RrvLog.w(TAG, "⚠️ Duplicate command received and ignored: ${command.commandId}")
+                RrvLog.w(TAG, "Duplicate command received and ignored: ${command.commandId}")
                 app.mqttManager.publishCommandAck(command.commandId, "EXECUTED", "Command already processed.")
                 return@launch
             }
 
-            RrvLog.mqtt("⚡ [CMD-ENGINE] Command received: ${command.commandType} (${command.commandId})")
+            RrvLog.mqtt("Command received: ${command.commandType} (${command.commandId})")
 
             // Step 2: Mark status = EXECUTING
             repository.updateCommandStatus(command.commandId, CommandStatus.EXECUTING, "Executing command...", 20)
@@ -560,7 +584,7 @@ class CommandProcessor(
             val executor = executors[type]
 
             if (executor == null) {
-                RrvLog.w(TAG, "✕ No executor found for command type: $type")
+                RrvLog.w(TAG, "No executor found for command type: $type")
                 repository.updateCommandStatus(command.commandId, CommandStatus.FAILED, "Unsupported command type: $type", 0)
                 app.mqttManager.publishCommandAck(command.commandId, "FAILED", "Unsupported command type: $type")
                 return@launch
@@ -572,19 +596,19 @@ class CommandProcessor(
                 if (result.isAsyncPending) {
                     // Hand off to asynchronous worker/receiver; keep status in EXECUTING without premature ACK
                     repository.updateCommandStatus(command.commandId, CommandStatus.EXECUTING, result.message, result.progress)
-                    RrvLog.i(TAG, "⏳ [CMD-ENGINE] Command ${command.commandId} handed off to background worker: ${result.message}")
+                    RrvLog.i(TAG, "Command ${command.commandId} handed off to background worker: ${result.message}")
                 } else {
-                    val finalStatus = if (result.isSuccess) CommandStatus.SUCCESS else CommandStatus.FAILED
+                    val finalStatus = if (result.isSuccess) CommandStatus.EXECUTED else CommandStatus.FAILED
                     repository.updateCommandStatus(command.commandId, finalStatus, result.message, result.progress)
                     app.mqttManager.publishCommandAck(
                         command.commandId,
                         if (result.isSuccess) "EXECUTED" else "FAILED",
                         result.message
                     )
-                    RrvLog.i(TAG, "✓ [CMD-ENGINE] Command ${command.commandId} finished: ${result.message}")
+                    RrvLog.i(TAG, "Command ${command.commandId} finished: ${result.message}")
                 }
             } catch (e: Exception) {
-                RrvLog.e(TAG, "✕ [CMD-ENGINE] Error executing ${command.commandId}", e)
+                RrvLog.e(TAG, "Error executing ${command.commandId}", e)
                 repository.updateCommandStatus(command.commandId, CommandStatus.FAILED, e.message ?: "Execution error", 0)
                 app.mqttManager.publishCommandAck(command.commandId, "FAILED", e.message ?: "Execution error")
             }

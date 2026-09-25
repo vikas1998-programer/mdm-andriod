@@ -11,11 +11,15 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserManager
+import android.provider.Settings
+import android.view.Surface
 import com.rrv.mdm.dpc.RrvMdmApplication
 import com.rrv.mdm.dpc.data.model.PolicyPayload
 import com.rrv.mdm.dpc.domain.model.ApplicationInfo
 import com.rrv.mdm.dpc.domain.model.InstallStatus
+import com.rrv.mdm.dpc.data.model.TimeFencePolicy
 import com.rrv.mdm.dpc.receiver.RrvDeviceAdminReceiver
+import com.rrv.mdm.dpc.receiver.TimeFenceAlarmReceiver
 import com.rrv.mdm.dpc.ui.home.RrvMdmHomeActivity
 import com.rrv.mdm.dpc.util.RrvLog
 import kotlinx.coroutines.CoroutineScope
@@ -49,6 +53,49 @@ class DeviceManagementManager(private val context: Context) {
             "com.samsung.android.biometrics",
             "com.samsung.android.knox.containercore",
             "com.samsung.klmsagent"
+        )
+
+        // Strict emergency safe harbor: 100% Guaranteed exempt from curfew suspension
+        val EMERGENCY_TELECOM_PACKAGES = setOf(
+            "com.android.dialer",
+            "com.google.android.dialer",
+            "com.samsung.android.dialer",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.samsung.android.incallui",
+            "com.google.android.apps.messaging",
+            "com.samsung.android.messaging",
+            "com.android.mms",
+            "com.android.emergency"
+        )
+
+        // Web Browsers targeted by curfew
+        val STANDARD_BROWSER_PACKAGES = setOf(
+            "com.android.chrome",
+            "com.sec.android.app.sbrowser",
+            "org.mozilla.firefox",
+            "com.microsoft.emmx",
+            "com.opera.browser",
+            "com.opera.mini.native",
+            "com.brave.browser",
+            "com.duckduckgo.mobile.android",
+            "com.heytap.browser",
+            "com.vivo.browser",
+            "com.mi.globalbrowser",
+            "com.uc.browser.en"
+        )
+
+        // Social and media streaming apps targeted by curfew
+        val STANDARD_SOCIAL_PACKAGES = setOf(
+            "com.google.android.youtube",
+            "com.instagram.android",
+            "com.facebook.katana",
+            "com.facebook.orca",
+            "com.snapchat.android",
+            "com.twitter.android",
+            "com.zhiliaoapp.musically",
+            "com.netflix.mediaclient",
+            "com.amazon.avod.thirdpartyclient"
         )
     }
 
@@ -97,7 +144,7 @@ class DeviceManagementManager(private val context: Context) {
                 // OP_WRITE_SETTINGS = 23, OP_SYSTEM_ALERT_WINDOW = 24
                 setMode.invoke(appOps, 23, uid, context.packageName, android.app.AppOpsManager.MODE_ALLOWED)
                 setMode.invoke(appOps, 24, uid, context.packageName, android.app.AppOpsManager.MODE_ALLOWED)
-                RrvLog.i(TAG, "🛡️ MDM DPC AppOps granted (WRITE_SETTINGS & SYSTEM_ALERT_WINDOW)")
+                RrvLog.i(TAG, "MDM DPC AppOps granted: WRITE_SETTINGS and SYSTEM_ALERT_WINDOW")
             }
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not invoke AppOpsManager.setMode: ${e.message}")
@@ -135,7 +182,7 @@ class DeviceManagementManager(private val context: Context) {
                 // Keep USB debugging accessible for enterprise ADB diagnostics
                 dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_DEBUGGING_FEATURES)
                 dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_USB_FILE_TRANSFER)
-                RrvLog.i(TAG, "✅ Baseline Device Owner security enforced: Anti-Uninstall, Anti-Exit, Safe Boot & Home Lock.")
+                RrvLog.i(TAG, "Baseline Device Owner security enforced: anti-uninstall, safe boot, and home lock.")
             }
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to apply baseline restrictions", e)
@@ -144,11 +191,16 @@ class DeviceManagementManager(private val context: Context) {
 
     /**
      * Lock the physical device screen immediately.
+     * If adminExclusive is true, engages full-screen AdminLockActivity so user cannot bypass.
      */
-    fun lockScreenNow(): Boolean {
+    fun lockScreenNow(adminExclusive: Boolean = false, message: String? = null, phone: String? = null, adminPin: String? = null): Boolean {
         return try {
-            dpm.lockNow()
-            RrvLog.i(TAG, "🔒 Screen locked successfully via DPM.")
+            if (adminExclusive) {
+                enableLostMode(message, phone, adminPin)
+            } else {
+                dpm.lockNow()
+            }
+            RrvLog.i(TAG, "Screen locked successfully via DPM (adminExclusive=$adminExclusive).")
             true
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to lock screen", e)
@@ -175,19 +227,33 @@ class DeviceManagementManager(private val context: Context) {
     }
 
     /**
-     * Reset device PIN / Passcode
+     * Reset device PIN / Passcode with default password support and immediate change requirement.
      */
-    fun resetPassword(newPin: String): Boolean {
+    fun resetPassword(newPin: String, requireImmediateChange: Boolean = true): Boolean {
         if (!isDeviceOwner()) return false
         return try {
+            val flags = if (requireImmediateChange) DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY else 0
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val token = "rrv_mdm_reset_token".toByteArray()
                 dpm.setResetPasswordToken(adminComponent, token)
-                dpm.resetPasswordWithToken(adminComponent, newPin, token, 0)
+                dpm.resetPasswordWithToken(adminComponent, newPin, token, flags)
             } else {
                 @Suppress("DEPRECATION")
-                dpm.resetPassword(newPin, DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY)
+                dpm.resetPassword(newPin, flags)
             }
+
+            if (requireImmediateChange) {
+                try {
+                    // Set expiration to 1 ms so password is immediately marked expired on unlock
+                    dpm.setPasswordExpirationTimeout(adminComponent, 1L)
+                    val prefs = context.getSharedPreferences("rrv_passcode_policy", Context.MODE_PRIVATE)
+                    prefs.edit().putBoolean("must_change_default_password", true).apply()
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "Could not set immediate password expiration: ${e.message}")
+                }
+            }
+            RrvLog.i(TAG, "Device password reset to default PIN (requireImmediateChange=$requireImmediateChange).")
+            true
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to reset passcode", e)
             false
@@ -207,7 +273,7 @@ class DeviceManagementManager(private val context: Context) {
             val launcherComponent = ComponentName(context, RrvMdmHomeActivity::class.java)
             dpm.addPersistentPreferredActivity(adminComponent, filter, launcherComponent)
             dpm.setUninstallBlocked(adminComponent, context.packageName, true)
-            RrvLog.i(TAG, "🏠 Bounded RrvMdmHomeActivity as permanent Default Home Launcher.")
+            RrvLog.i(TAG, "Configured RrvMdmHomeActivity as permanent Default Home Launcher.")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to set default home launcher", e)
         }
@@ -220,7 +286,7 @@ class DeviceManagementManager(private val context: Context) {
         if (!isDeviceOwner()) return
         try {
             dpm.clearPackagePersistentPreferredActivities(adminComponent, context.packageName)
-            RrvLog.i(TAG, "✓ Cleared default Home launcher")
+            RrvLog.i(TAG, "Cleared default Home launcher")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to clear default home launcher", e)
         }
@@ -351,7 +417,7 @@ class DeviceManagementManager(private val context: Context) {
                     }
                 }
 
-                // 3.5 Password Complexity Governance
+                // 3.5 Password Complexity & Security Governance
                 if (policy.minPasswordLength > 0 || policy.passwordQuality.isNotBlank()) {
                     try {
                         val quality = when (policy.passwordQuality.uppercase()) {
@@ -365,13 +431,42 @@ class DeviceManagementManager(private val context: Context) {
                         }
                         @Suppress("DEPRECATION")
                         dpm.setPasswordQuality(adminComponent, quality)
+
                         if (policy.minPasswordLength > 0) {
                             @Suppress("DEPRECATION")
                             dpm.setPasswordMinimumLength(adminComponent, policy.minPasswordLength)
                         }
+                        if (policy.minPasswordLetters > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumLetters(adminComponent, policy.minPasswordLetters)
+                        }
+                        if (policy.minPasswordUpperCase > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumUpperCase(adminComponent, policy.minPasswordUpperCase)
+                        }
+                        if (policy.minPasswordLowerCase > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumLowerCase(adminComponent, policy.minPasswordLowerCase)
+                        }
+                        if (policy.minPasswordNumeric > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumNumeric(adminComponent, policy.minPasswordNumeric)
+                        }
+                        if (policy.minPasswordSymbols > 0) {
+                            @Suppress("DEPRECATION")
+                            dpm.setPasswordMinimumSymbols(adminComponent, policy.minPasswordSymbols)
+                        }
+                        if (policy.passwordHistoryLength > 0) {
+                            dpm.setPasswordHistoryLength(adminComponent, policy.passwordHistoryLength)
+                        }
+                        if (policy.passwordExpirationDays > 0) {
+                            val expirationMs = policy.passwordExpirationDays.toLong() * 24L * 60L * 60L * 1000L
+                            dpm.setPasswordExpirationTimeout(adminComponent, expirationMs)
+                        }
                         if (policy.maxFailedAttempts > 0) {
                             dpm.setMaximumFailedPasswordsForWipe(adminComponent, policy.maxFailedAttempts)
                         }
+                        RrvLog.i(TAG, "Password policy enforced: Quality=$quality, MinLen=${policy.minPasswordLength}, History=${policy.passwordHistoryLength}, ExpDays=${policy.passwordExpirationDays}")
                     } catch (e: Exception) {
                         RrvLog.e(TAG, "Error applying password complexity policy: ${e.message}")
                     }
@@ -425,6 +520,10 @@ class DeviceManagementManager(private val context: Context) {
                 if (policy.screenBrightnessPercent != null && !policy.autoBrightnessEnabled) {
                     setScreenBrightness(policy.screenBrightnessPercent)
                 }
+                val orientationMode = policy.screenOrientation.ifBlank { policy.launcherDesign.screenOrientation }
+                if (orientationMode.isNotBlank()) {
+                    setScreenOrientation(orientationMode)
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     setUserRestriction(UserManager.DISALLOW_CONFIG_BRIGHTNESS, true)
                 }
@@ -444,6 +543,9 @@ class DeviceManagementManager(private val context: Context) {
                 }
                 val volumeLocked = policy.volumeAdjustDisabled || policy.masterVolumeMuted
                 setVolumeAdjustDisabled(volumeLocked)
+                if (!policy.masterVolumeMuted) {
+                    setMasterVolumeMuted(false)
+                }
 
                 // 7. Ensure Home Launcher is registered
                 setAsDefaultHomeLauncher()
@@ -491,7 +593,7 @@ class DeviceManagementManager(private val context: Context) {
                             dpm.setApplicationHidden(adminComponent, pkg, true)
                             dpm.setPackagesSuspended(adminComponent, arrayOf(pkg), true)
                             am?.killBackgroundProcesses(pkg)
-                            RrvLog.i(TAG, "🗑️ Enforced UNINSTALL/Removal policy on package $pkg")
+                            RrvLog.i(TAG, "Enforced UNINSTALL/Removal policy on package $pkg")
                         }
                     } catch (e: Exception) {
                         RrvLog.e(TAG, "Failed to uninstall/remove $pkg", e)
@@ -632,7 +734,7 @@ class DeviceManagementManager(private val context: Context) {
                             ?: if (!appPolicy.appId.isNullOrBlank()) "/api/v1/apps/${appPolicy.appId}/download" else ""
 
                         if (targetDownloadUrl.isNotBlank()) {
-                            RrvLog.i(TAG, "📦 Auto-enqueuing silent installation for ${appPolicy.packageName} (v${appPolicy.versionCode}) from policy.")
+                            RrvLog.i(TAG, "Auto-enqueuing silent installation for ${appPolicy.packageName} (v${appPolicy.versionCode}) from policy.")
                             val cmdId = "policy-app-${appPolicy.packageName}-${appPolicy.versionCode}-${System.currentTimeMillis()}"
                             com.rrv.mdm.dpc.worker.ApkDownloadWorker.enqueue(
                                 context,
@@ -650,11 +752,219 @@ class DeviceManagementManager(private val context: Context) {
                     }
                 }
 
-                RrvLog.i(TAG, "🛡️ Zero-Trust App Governance: $allowedCount apps ALLOWED/VISIBLE, $blockedCount apps BLOCKED/HIDDEN.")
-                RrvLog.i(TAG, "✅ Zero-Trust Policy [${policy.name}] successfully applied via DPM.")
+                // 12. Evaluate and Schedule Autonomous Time-Fence Curfew
+                evaluateAndScheduleTimeFence(policy)
+
+                RrvLog.i(TAG, "App governance applied: allowedCount=$allowedCount, blockedCount=$blockedCount")
+                RrvLog.i(TAG, "Policy applied successfully: policyName='${policy.name}'")
             } catch (e: Exception) {
                 RrvLog.e(TAG, "Error applying DPM policy", e)
             }
+        }
+    }
+
+    /**
+     * Autonomous Time-Fence & Nightly Curfew Enforcement.
+     * Evaluates whether current local time falls into the curfew window,
+     * suspends browser/social apps while guaranteeing voice/SMS protection,
+     * and registers exact AlarmManager wakeups for the next transitions.
+     */
+    fun evaluateAndScheduleTimeFence(policy: PolicyPayload) {
+        if (!isDeviceOwner()) return
+        val tf = policy.timeFence
+        val sharedPrefs = context.getSharedPreferences("rrv_time_fence", Context.MODE_PRIVATE)
+
+        if (!tf.enabled) {
+            // Restore any packages that were suspended by curfew
+            val suspendedJson = sharedPrefs.getString("curfew_suspended_packages", null)
+            if (!suspendedJson.isNullOrBlank()) {
+                try {
+                    val packages = com.google.gson.Gson().fromJson(suspendedJson, Array<String>::class.java)
+                    if (packages != null && packages.isNotEmpty()) {
+                        dpm.setPackagesSuspended(adminComponent, packages, false)
+                        RrvLog.i(TAG, "Curfew disabled: Restored ${packages.size} previously suspended apps.")
+                    }
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "Error restoring curfew packages: ${e.message}")
+                }
+                sharedPrefs.edit().remove("curfew_suspended_packages").putBoolean("is_curfew_active", false).apply()
+            }
+            cancelTimeFenceAlarms()
+            return
+        }
+
+        // Anti-Clock-Tampering: Enforce network time so users cannot roll back clock
+        try {
+            dpm.setAutoTimeRequired(adminComponent, true)
+        } catch (_: Exception) {}
+
+        val isCurfew = isCurfewActive(tf.startTime, tf.endTime, tf.daysOfWeek)
+        RrvLog.i(TAG, "Evaluating TimeFence '${tf.name}': Curfew Active=$isCurfew (Window: ${tf.startTime} -> ${tf.endTime})")
+
+        val pm = context.packageManager
+        val installedPkgs = try {
+            pm.getInstalledPackages(0).map { it.packageName }.toSet()
+        } catch (_: Exception) {
+            emptySet()
+        }
+
+        // Compute blacklist for curfew
+        val targetBlockList = mutableSetOf<String>()
+        if (tf.blockBrowsers) {
+            targetBlockList.addAll(STANDARD_BROWSER_PACKAGES)
+        }
+        if (tf.blockSocialMedia) {
+            targetBlockList.addAll(STANDARD_SOCIAL_PACKAGES)
+        }
+        targetBlockList.addAll(tf.blockedPackages)
+
+        // Strict emergency safe harbor: NEVER suspend critical system, emergency telecom, or explicit exempt apps
+        val safeHarbor = CRITICAL_SYSTEM_PACKAGES + EMERGENCY_TELECOM_PACKAGES + tf.exemptPackages.toSet() + context.packageName
+        val packagesToSuspend = targetBlockList.filter { pkg ->
+            pkg !in safeHarbor && installedPkgs.contains(pkg)
+        }.toTypedArray()
+
+        if (isCurfew) {
+            if (packagesToSuspend.isNotEmpty()) {
+                try {
+                    dpm.setPackagesSuspended(adminComponent, packagesToSuspend, true)
+                    try {
+                        dpm.setStartUserSessionMessage(adminComponent, tf.curfewMessage)
+                    } catch (_: Exception) {}
+                    RrvLog.i(TAG, "TimeFence curfew activated: suspendedCount=${packagesToSuspend.size}")
+                    sharedPrefs.edit()
+                        .putString("curfew_suspended_packages", com.google.gson.Gson().toJson(packagesToSuspend))
+                        .putBoolean("is_curfew_active", true)
+                        .apply()
+                } catch (e: Exception) {
+                    RrvLog.e(TAG, "Error suspending packages for curfew: ${e.message}")
+                }
+            }
+        } else {
+            // Curfew is inactive: Unsuspend apps
+            val previouslySuspendedJson = sharedPrefs.getString("curfew_suspended_packages", null)
+            val packagesToUnsuspend = if (!previouslySuspendedJson.isNullOrBlank()) {
+                try {
+                    com.google.gson.Gson().fromJson(previouslySuspendedJson, Array<String>::class.java)
+                } catch (_: Exception) {
+                    packagesToSuspend
+                }
+            } else {
+                packagesToSuspend
+            }
+
+            if (packagesToUnsuspend != null && packagesToUnsuspend.isNotEmpty()) {
+                try {
+                    dpm.setPackagesSuspended(adminComponent, packagesToUnsuspend, false)
+                    RrvLog.i(TAG, "TimeFence curfew released: restoredCount=${packagesToUnsuspend.size}")
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "Error restoring curfew packages: ${e.message}")
+                }
+            }
+            sharedPrefs.edit().remove("curfew_suspended_packages").putBoolean("is_curfew_active", false).apply()
+        }
+
+        // Schedule Next Alarm Transitions (StartTime and EndTime)
+        scheduleNextCurfewAlarms(tf)
+    }
+
+    fun isCurfewActive(startTimeStr: String, endTimeStr: String, daysOfWeek: List<String>): Boolean {
+        return try {
+            val now = java.time.LocalTime.now()
+            val today = java.time.LocalDate.now().dayOfWeek.name.take(3).uppercase()
+            if (daysOfWeek.isNotEmpty() && !daysOfWeek.map { it.take(3).uppercase() }.contains(today)) {
+                return false
+            }
+            val start = java.time.LocalTime.parse(startTimeStr.trim())
+            val end = java.time.LocalTime.parse(endTimeStr.trim())
+            if (start.isBefore(end)) {
+                !now.isBefore(start) && now.isBefore(end)
+            } else {
+                // Overnight window e.g. 21:30 to 06:00
+                !now.isBefore(start) || now.isBefore(end)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun scheduleNextCurfewAlarms(tf: TimeFencePolicy) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager ?: return
+            val intent = Intent(context, TimeFenceAlarmReceiver::class.java).apply {
+                action = TimeFenceAlarmReceiver.ACTION_TIME_FENCE_TRANSITION
+            }
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
+                context,
+                10084,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val now = java.time.LocalDateTime.now()
+            val startLocal = java.time.LocalTime.parse(tf.startTime.trim())
+            val endLocal = java.time.LocalTime.parse(tf.endTime.trim())
+
+            var nextStart = now.with(startLocal)
+            if (now.isAfter(nextStart)) {
+                nextStart = nextStart.plusDays(1)
+            }
+
+            var nextEnd = now.with(endLocal)
+            if (now.isAfter(nextEnd)) {
+                nextEnd = nextEnd.plusDays(1)
+            }
+
+            val nextTransition = if (nextStart.isBefore(nextEnd)) nextStart else nextEnd
+            val triggerMillis = nextTransition.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+            alarmManager.setExactAndAllowWhileIdle(
+                android.app.AlarmManager.RTC_WAKEUP,
+                triggerMillis,
+                pendingIntent
+            )
+            RrvLog.i(TAG, "Scheduled next TimeFence alarm: transition=$nextTransition ($triggerMillis)")
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Could not schedule exact TimeFence alarm: ${e.message}")
+        }
+    }
+
+    private fun cancelTimeFenceAlarms() {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager ?: return
+            val intent = Intent(context, TimeFenceAlarmReceiver::class.java).apply {
+                action = TimeFenceAlarmReceiver.ACTION_TIME_FENCE_TRANSITION
+            }
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
+                context,
+                10084,
+                intent,
+                android.app.PendingIntent.FLAG_NO_CREATE or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+                RrvLog.i(TAG, "Cancelled TimeFence alarms.")
+            }
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Toggles hardware Wi-Fi state.
+     */
+    fun setWifiEnabled(enabled: Boolean): Boolean {
+        return try {
+            if (isDeviceOwner()) {
+                dpm.setGlobalSetting(adminComponent, android.provider.Settings.Global.WIFI_ON, if (enabled) "1" else "0")
+            }
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            wifiManager?.isWifiEnabled = enabled
+            RrvLog.i(TAG, "Wi-Fi state configured: enabled=$enabled")
+            true
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Failed to toggle Wi-Fi state: ${e.message}")
+            false
         }
     }
 
@@ -669,7 +979,7 @@ class DeviceManagementManager(private val context: Context) {
             if (policy.wifiDisabled) {
                 @Suppress("DEPRECATION")
                 wifiManager.isWifiEnabled = false
-                RrvLog.w(TAG, "🚫 Wi-Fi disabled/blocked on hardware by Enterprise Policy.")
+                RrvLog.w(TAG, "Wi-Fi disabled on hardware by enterprise policy.")
                 return
             }
 
@@ -702,7 +1012,7 @@ class DeviceManagementManager(private val context: Context) {
 
                     val suggestions = listOf(suggestionBuilder.build())
                     val status = wifiManager.addNetworkSuggestions(suggestions)
-                    RrvLog.i(TAG, "📶 Corporate Wi-Fi '$ssid' configured via WifiNetworkSuggestion (Status: $status)")
+                    RrvLog.i(TAG, "Corporate Wi-Fi '$ssid' configured via WifiNetworkSuggestion: status=$status")
                 } else {
                     @Suppress("DEPRECATION")
                     val wifiConfig = android.net.wifi.WifiConfiguration().apply {
@@ -720,7 +1030,7 @@ class DeviceManagementManager(private val context: Context) {
                         wifiManager.enableNetwork(netId, true)
                         @Suppress("DEPRECATION")
                         wifiManager.reconnect()
-                        RrvLog.i(TAG, "📶 Connected to legacy Wi-Fi profile: $ssid (NetId: $netId)")
+                        RrvLog.i(TAG, "Connected to legacy Wi-Fi profile: ssid=$ssid, netId=$netId")
                     }
                 }
             }
@@ -745,7 +1055,7 @@ class DeviceManagementManager(private val context: Context) {
                     android.provider.Settings.System.SCREEN_OFF_TIMEOUT,
                     timeoutMs.toInt()
                 )
-                RrvLog.i(TAG, "⏰ Screen timeout configured to $seconds s ($timeoutMs ms).")
+                RrvLog.i(TAG, "Screen timeout configured: seconds=$seconds ($timeoutMs ms).")
             } catch (se: Exception) {
                 grantDpcRuntimePermissions()
                 try {
@@ -754,7 +1064,7 @@ class DeviceManagementManager(private val context: Context) {
                         android.provider.Settings.System.SCREEN_OFF_TIMEOUT,
                         timeoutMs.toInt()
                     )
-                    RrvLog.i(TAG, "⏰ Screen timeout configured to $seconds s after re-granting AppOp.")
+                    RrvLog.i(TAG, "Screen timeout configured after re-granting AppOp: seconds=$seconds")
                 } catch (inner: Exception) {
                     RrvLog.w(TAG, "Could not set screen timeout in Settings.System: ${inner.message}")
                 }
@@ -795,7 +1105,7 @@ class DeviceManagementManager(private val context: Context) {
                     brightnessValue
                 )
             }
-            RrvLog.i(TAG, "🔆 Screen brightness set to $clamped% (raw $brightnessValue/255).")
+            RrvLog.i(TAG, "Screen brightness set to $clamped% (raw $brightnessValue/255).")
             true
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not set screen brightness to $percent%: ${e.message}")
@@ -827,11 +1137,54 @@ class DeviceManagementManager(private val context: Context) {
                     mode
                 )
             }
-            RrvLog.i(TAG, "🔆 Auto-brightness mode configured: $enabled")
+            RrvLog.i(TAG, "Auto-brightness mode configured: enabled=$enabled")
             true
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not toggle auto brightness: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Enforces system-wide screen orientation and auto-rotate lock.
+     * Supported modes: PORTRAIT, LANDSCAPE, REVERSE_PORTRAIT, REVERSE_LANDSCAPE, AUTO_ROTATE / SENSOR.
+     */
+    fun setScreenOrientation(orientationStr: String) {
+        try {
+            val cr = context.contentResolver
+            when (orientationStr.uppercase().trim()) {
+                "PORTRAIT" -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+                    Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_0)
+                    RrvLog.i(TAG, "System Screen Orientation: LOCKED to PORTRAIT (0 deg)")
+                }
+                "LANDSCAPE" -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+                    Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_90)
+                    RrvLog.i(TAG, "System Screen Orientation: LOCKED to LANDSCAPE (90 deg)")
+                }
+                "REVERSE_PORTRAIT" -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+                    Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_180)
+                    RrvLog.i(TAG, "System Screen Orientation: LOCKED to REVERSE_PORTRAIT (180 deg)")
+                }
+                "REVERSE_LANDSCAPE" -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+                    Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_270)
+                    RrvLog.i(TAG, "System Screen Orientation: LOCKED to REVERSE_LANDSCAPE (270 deg)")
+                }
+                "AUTO_ROTATE", "SENSOR", "AUTO" -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 1)
+                    RrvLog.i(TAG, "System Screen Orientation: AUTO-ROTATE enabled")
+                }
+                else -> {
+                    Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0)
+                    Settings.System.putInt(cr, Settings.System.USER_ROTATION, Surface.ROTATION_0)
+                    RrvLog.i(TAG, "System Screen Orientation: Defaulted to PORTRAIT (0 deg)")
+                }
+            }
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Failed to apply system screen orientation: ${e.message}")
         }
     }
 
@@ -850,7 +1203,7 @@ class DeviceManagementManager(private val context: Context) {
                 audioManager?.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0)
                 audioManager?.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
             }
-            RrvLog.i(TAG, "🔇 Master volume muted: $muted")
+            RrvLog.i(TAG, "Master volume muted: $muted")
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not set master volume muted to $muted: ${e.message}")
         }
@@ -861,7 +1214,7 @@ class DeviceManagementManager(private val context: Context) {
      */
     fun setVolumeAdjustDisabled(disabled: Boolean) {
         setUserRestriction(UserManager.DISALLOW_ADJUST_VOLUME, disabled)
-        RrvLog.i(TAG, "🔇 Volume button adjustment locked: $disabled")
+        RrvLog.i(TAG, "Volume button adjustment locked: $disabled")
     }
 
     /**
@@ -884,9 +1237,16 @@ class DeviceManagementManager(private val context: Context) {
                     if (isDeviceOwner()) {
                         try { dpm.setMasterVolumeMuted(adminComponent, false) } catch (_: Exception) {}
                     }
-                    audioManager.adjustStreamVolume(streamType, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    try {
+                        if (audioManager.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL) {
+                            audioManager.ringerMode = android.media.AudioManager.RINGER_MODE_NORMAL
+                        }
+                    } catch (_: Exception) {}
+                    try {
+                        audioManager.adjustStreamVolume(streamType, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                    } catch (_: Exception) {}
                     if (streamType == android.media.AudioManager.STREAM_MUSIC) {
-                        audioManager.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0)
+                        try { audioManager.adjustVolume(android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (_: Exception) {}
                     }
                 }
                 val maxVol = audioManager.getStreamMaxVolume(streamType)
@@ -895,7 +1255,7 @@ class DeviceManagementManager(private val context: Context) {
                 } else 0
                 val target = Math.round(minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
                 audioManager.setStreamVolume(streamType, target, 0)
-                RrvLog.i(TAG, "🔊 Audio stream $streamType volume set to $percent% (level $target/$maxVol)")
+                RrvLog.i(TAG, "Audio stream $streamType volume set to $percent% (level $target/$maxVol)")
             } finally {
                 if (wasLocked && isDeviceOwner()) {
                     try { dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
@@ -938,7 +1298,7 @@ class DeviceManagementManager(private val context: Context) {
                         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build()
                     ringtone.play()
-                    RrvLog.w(TAG, "🚨 High-decibel alarm siren sounding for $durationSeconds seconds!")
+                    RrvLog.w(TAG, "Alarm siren sounding for $durationSeconds seconds")
                 }
 
                 kotlinx.coroutines.delay(durationSeconds * 1000L)
@@ -948,41 +1308,69 @@ class DeviceManagementManager(private val context: Context) {
                 try {
                     ringtone?.stop()
                 } catch (_: Exception) {}
-                RrvLog.i(TAG, "🚨 Alarm siren playback completed.")
+                RrvLog.i(TAG, "Alarm siren playback completed.")
             }
         }
     }
 
     /**
-     * Lost mode banner and immediate screen lock.
+     * Lost mode banner and unbypassable Admin Exclusive Screen Lock.
      */
-    fun enableLostMode(message: String?, phone: String?) {
+    fun enableLostMode(message: String?, phone: String?, adminPin: String? = null) {
         try {
+            val lockMsg = message ?: "This device has been locked by IT Administration. Standard user unlock is restricted."
+            val prefs = context.getSharedPreferences("rrv_admin_lock", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putBoolean("is_locked", true)
+                .putString("lock_message", lockMsg)
+                .putString("lock_phone", phone)
+                .putString("admin_unlock_pin", adminPin ?: "123456")
+                .apply()
+
             if (isDeviceOwner()) {
                 val lockInfo = buildString {
-                    append(message ?: "This device is managed by IT and marked as LOST.")
+                    append(lockMsg)
                     if (!phone.isNullOrBlank()) {
                         append("\nPlease call: ").append(phone)
                     }
                 }
                 dpm.setDeviceOwnerLockScreenInfo(adminComponent, lockInfo)
             }
-            lockScreenNow()
-            RrvLog.w(TAG, "🛡️ Lost Mode enabled with message: $message")
+
+            // Launch full-screen unbypassable AdminLockActivity
+            try {
+                val lockIntent = Intent(context, com.rrv.mdm.dpc.ui.lock.AdminLockActivity::class.java).apply {
+                    putExtra("message", lockMsg)
+                    putExtra("phoneNumber", phone)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                }
+                context.startActivity(lockIntent)
+            } catch (le: Exception) {
+                RrvLog.w(TAG, "Could not start AdminLockActivity directly: ${le.message}")
+            }
+
+            dpm.lockNow()
+            RrvLog.w(TAG, "Admin-Exclusive Lock Mode enabled: message=$lockMsg")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to enable lost mode", e)
         }
     }
 
     /**
-     * Unlock device / clear lockscreen banner.
+     * Unlock device / clear lockscreen banner and dismiss AdminLockActivity.
      */
     fun unlockDevice() {
         try {
+            val prefs = context.getSharedPreferences("rrv_admin_lock", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("is_locked", false).apply()
+
             if (isDeviceOwner()) {
                 dpm.setDeviceOwnerLockScreenInfo(adminComponent, null)
             }
-            RrvLog.i(TAG, "Device unlocked and lock screen info cleared.")
+
+            // Send unlock broadcast so AdminLockActivity finishes immediately
+            context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED"))
+            RrvLog.i(TAG, "Device unlocked, AdminLockActivity dismissed, and lock screen info cleared.")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to unlock device", e)
         }
@@ -1001,7 +1389,7 @@ class DeviceManagementManager(private val context: Context) {
     fun wipeDevice(wipeSdCard: Boolean = true): Boolean {
         if (!isDeviceOwner()) return false
         return try {
-            RrvLog.w(TAG, "🚨 Executing ENTERPRISE DPM WIPE...")
+            RrvLog.w(TAG, "Executing enterprise wipe...")
             val flags = if (wipeSdCard) DevicePolicyManager.WIPE_EXTERNAL_STORAGE else 0
             dpm.wipeData(flags)
             true
@@ -1023,7 +1411,7 @@ class DeviceManagementManager(private val context: Context) {
 
             // 1. Guard MDM Core package against accidental removal
             if (packageName == context.packageName || packageName.startsWith("com.rrv.mdm")) {
-                RrvLog.e(TAG, "🚨 BLOCKED: Attempt to uninstall MDM Core package [$packageName] rejected.")
+                RrvLog.e(TAG, "Attempt to uninstall MDM Core package [$packageName] rejected.")
                 return false
             }
 
@@ -1039,7 +1427,7 @@ class DeviceManagementManager(private val context: Context) {
             val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
             val isUpdatedSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
             if (isSystem && !isUpdatedSystem) {
-                RrvLog.e(TAG, "🚫 APPLICATION_NOT_UNINSTALLABLE: Package $packageName is a pre-installed system app.")
+                RrvLog.e(TAG, "Package $packageName is a pre-installed system app and cannot be uninstalled.")
                 return false
             }
 
@@ -1053,7 +1441,7 @@ class DeviceManagementManager(private val context: Context) {
                 }
                 val pendingIntent = android.app.PendingIntent.getBroadcast(context, 0, intent, flags)
                 packageInstaller.uninstall(packageName, pendingIntent.intentSender)
-                RrvLog.i(TAG, "✓ Silent uninstall initiated for $packageName")
+                RrvLog.i(TAG, "Silent uninstall initiated for $packageName")
                 return true
             } else {
                 RrvLog.w(TAG, "Cannot silent uninstall: Agent is not Device Owner.")

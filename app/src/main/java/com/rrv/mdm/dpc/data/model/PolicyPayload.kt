@@ -45,6 +45,14 @@ data class PolicyPayload(
     // Password & Lockout Governance
     @SerializedName("passwordQuality") val passwordQuality: String = "COMPLEX",
     @SerializedName("minPasswordLength") val minPasswordLength: Int = 6,
+    @SerializedName("minPasswordLetters") val minPasswordLetters: Int = 1,
+    @SerializedName("minPasswordUpperCase") val minPasswordUpperCase: Int = 1,
+    @SerializedName("minPasswordLowerCase") val minPasswordLowerCase: Int = 1,
+    @SerializedName("minPasswordNumeric") val minPasswordNumeric: Int = 1,
+    @SerializedName("minPasswordSymbols") val minPasswordSymbols: Int = 1,
+    @SerializedName("passwordHistoryLength") val passwordHistoryLength: Int = 5,
+    @SerializedName("passwordExpirationDays") val passwordExpirationDays: Int = 90,
+    @SerializedName("forcePasswordChangeOnFirstUnlock") val forcePasswordChangeOnFirstUnlock: Boolean = true,
     @SerializedName("maxFailedAttempts") val maxFailedAttempts: Int = 5,
     @SerializedName("lockoutDurationMinutes") val lockoutDurationMinutes: Int = 15,
     @SerializedName("keyguardCameraDisabled") val keyguardCameraDisabled: Boolean = false,
@@ -70,7 +78,11 @@ data class PolicyPayload(
     @SerializedName("ringVolumePercent") val ringVolumePercent: Int? = null,
 
     // Mobile UI & Launcher Branding Design Control
-    @SerializedName("launcherDesign") val launcherDesign: LauncherDesignPolicy = LauncherDesignPolicy()
+    @SerializedName("screenOrientation") val screenOrientation: String = "PORTRAIT",
+    @SerializedName("launcherDesign") val launcherDesign: LauncherDesignPolicy = LauncherDesignPolicy(),
+
+    // Time-Fence & Scheduled Nightly Curfew Policy
+    @SerializedName("timeFence") val timeFence: TimeFencePolicy = TimeFencePolicy()
 ) {
     companion object {
         fun fromJson(json: String?): PolicyPayload {
@@ -165,14 +177,30 @@ data class PolicyPayload(
                 val pass = root["passcode"] as? Map<*, *>
                 var passwordQuality = base.passwordQuality
                 var minPassLen = base.minPasswordLength
+                var minLetters = base.minPasswordLetters
+                var minUpper = base.minPasswordUpperCase
+                var minLower = base.minPasswordLowerCase
+                var minNum = base.minPasswordNumeric
+                var minSym = base.minPasswordSymbols
+                var passHistory = base.passwordHistoryLength
+                var passExpDays = base.passwordExpirationDays
+                var forcePassChange = base.forcePasswordChangeOnFirstUnlock
                 var maxAttempts = base.maxFailedAttempts
                 var keyguardCameraDisabled = base.keyguardCameraDisabled
                 var keyguardNotificationsDisabled = base.keyguardNotificationsDisabled
 
                 if (pass != null) {
                     (pass["passwordQuality"] as? String ?: pass["password_quality"] as? String)?.let { passwordQuality = it }
-                    (pass["minPasswordLength"] as? Number ?: pass["min_length"] as? Number)?.let { minPassLen = it.toInt() }
-                    (pass["maxFailedAttemptsForWipe"] as? Number ?: pass["max_failed_attempts_wipe"] as? Number)?.let { maxAttempts = it.toInt() }
+                    (pass["minPasswordLength"] as? Number ?: pass["min_length"] as? Number ?: pass["minLength"] as? Number)?.let { minPassLen = it.toInt() }
+                    (pass["minPasswordLetters"] as? Number ?: pass["min_letters"] as? Number ?: pass["minLetters"] as? Number)?.let { minLetters = it.toInt() }
+                    (pass["minPasswordUpperCase"] as? Number ?: pass["min_uppercase"] as? Number ?: pass["minUpperCase"] as? Number)?.let { minUpper = it.toInt() }
+                    (pass["minPasswordLowerCase"] as? Number ?: pass["min_lowercase"] as? Number ?: pass["minLowerCase"] as? Number)?.let { minLower = it.toInt() }
+                    (pass["minPasswordNumeric"] as? Number ?: pass["min_numeric"] as? Number ?: pass["minNumeric"] as? Number)?.let { minNum = it.toInt() }
+                    (pass["minPasswordSymbols"] as? Number ?: pass["min_symbols"] as? Number ?: pass["minSymbols"] as? Number)?.let { minSym = it.toInt() }
+                    (pass["passwordHistoryLength"] as? Number ?: pass["history_length"] as? Number ?: pass["passwordHistory"] as? Number)?.let { passHistory = it.toInt() }
+                    (pass["passwordExpirationDays"] as? Number ?: pass["expiration_days"] as? Number ?: pass["expirationDays"] as? Number)?.let { passExpDays = it.toInt() }
+                    (pass["forcePasswordChangeOnFirstUnlock"] as? Boolean ?: pass["force_change"] as? Boolean ?: pass["requirePasswordChange"] as? Boolean)?.let { forcePassChange = it }
+                    (pass["maxFailedAttemptsForWipe"] as? Number ?: pass["max_failed_attempts_wipe"] as? Number ?: pass["maxFailedAttempts"] as? Number)?.let { maxAttempts = it.toInt() }
                     (pass["keyguardCameraDisabled"] as? Boolean ?: pass["keyguard_camera_disabled"] as? Boolean)?.let { keyguardCameraDisabled = it }
                     (pass["keyguardNotificationsDisabled"] as? Boolean ?: pass["keyguard_notifications_disabled"] as? Boolean)?.let { keyguardNotificationsDisabled = it }
                 }
@@ -257,6 +285,34 @@ data class PolicyPayload(
                 (root["wifiSecurityType"] as? String ?: root["wifi_security_type"] as? String)?.let { wifiSecurityType = it }
                 (root["wifiAutoConnect"] as? Boolean ?: root["wifi_auto_connect"] as? Boolean)?.let { wifiAutoConnect = it }
 
+                // Screen Orientation & Launcher Design Governance
+                val designMap = root["launcherDesign"] as? Map<*, *>
+                var orient = (root["screenOrientation"] as? String ?: disp?.get("screenOrientation") as? String ?: base.screenOrientation).trim()
+                if (designMap != null) {
+                    (designMap["screenOrientation"] as? String)?.let { orient = it.trim() }
+                }
+                val parsedLauncherDesign = try {
+                    if (designMap != null) {
+                        gson.fromJson(gson.toJson(designMap), LauncherDesignPolicy::class.java) ?: base.launcherDesign
+                    } else {
+                        base.launcherDesign.copy(screenOrientation = orient)
+                    }
+                } catch (_: Exception) {
+                    base.launcherDesign.copy(screenOrientation = orient)
+                }
+
+                // Time-Fence & Scheduled Curfew Governance
+                val tfMap = root["timeFence"] as? Map<*, *> ?: root["time_fence"] as? Map<*, *>
+                val parsedTimeFence = try {
+                    if (tfMap != null) {
+                        gson.fromJson(gson.toJson(tfMap), TimeFencePolicy::class.java) ?: base.timeFence
+                    } else {
+                        base.timeFence
+                    }
+                } catch (_: Exception) {
+                    base.timeFence
+                }
+
                 base.copy(
                     cameraDisabled = cameraDisabled,
                     screenCaptureDisabled = screenCaptureDisabled,
@@ -288,6 +344,14 @@ data class PolicyPayload(
                     applications = if (apps != null || root.containsKey("applications")) appList else base.applications,
                     passwordQuality = passwordQuality,
                     minPasswordLength = minPassLen,
+                    minPasswordLetters = minLetters,
+                    minPasswordUpperCase = minUpper,
+                    minPasswordLowerCase = minLower,
+                    minPasswordNumeric = minNum,
+                    minPasswordSymbols = minSym,
+                    passwordHistoryLength = passHistory,
+                    passwordExpirationDays = passExpDays,
+                    forcePasswordChangeOnFirstUnlock = forcePassChange,
                     maxFailedAttempts = maxAttempts,
                     keyguardCameraDisabled = keyguardCameraDisabled,
                     keyguardNotificationsDisabled = keyguardNotificationsDisabled,
@@ -300,7 +364,10 @@ data class PolicyPayload(
                     volumeAdjustDisabled = volLock,
                     mediaVolumePercent = mediaVol,
                     alarmVolumePercent = alarmVol,
-                    ringVolumePercent = ringVol
+                    ringVolumePercent = ringVol,
+                    screenOrientation = orient,
+                    launcherDesign = parsedLauncherDesign.copy(screenOrientation = orient),
+                    timeFence = parsedTimeFence
                 )
             } catch (_: Exception) {
                 PolicyPayload()
@@ -308,6 +375,19 @@ data class PolicyPayload(
         }
     }
 }
+
+data class TimeFencePolicy(
+    @SerializedName("enabled") val enabled: Boolean = false,
+    @SerializedName("name") val name: String = "Devotee Nightly Curfew",
+    @SerializedName("startTime") val startTime: String = "21:30",
+    @SerializedName("endTime") val endTime: String = "06:00",
+    @SerializedName("daysOfWeek") val daysOfWeek: List<String> = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"),
+    @SerializedName("blockBrowsers") val blockBrowsers: Boolean = true,
+    @SerializedName("blockSocialMedia") val blockSocialMedia: Boolean = true,
+    @SerializedName("blockedPackages") val blockedPackages: List<String> = emptyList(),
+    @SerializedName("exemptPackages") val exemptPackages: List<String> = emptyList(),
+    @SerializedName("curfewMessage") val curfewMessage: String = "VCM Nightly Curfew in effect (9:30 PM – 6:00 AM). Emergency Voice Calls & SMS remain active."
+)
 
 data class ApplicationPolicy(
     @SerializedName("appId") val appId: String? = null,

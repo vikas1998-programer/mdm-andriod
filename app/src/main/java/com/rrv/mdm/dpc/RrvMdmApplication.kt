@@ -48,7 +48,7 @@ class RrvMdmApplication : Application() {
     @SuppressLint("HardwareIds", "MissingPermission")
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "🚀 Initializing RRV MDM Enterprise Client Subsystems...")
+        Log.i(TAG, "Initializing RRV MDM Enterprise Client Subsystems...")
 
         // 1. Initialize Authoritative Configuration Provider & Database
         serverConfigProvider = ServerConfigurationProvider(this)
@@ -113,6 +113,12 @@ class RrvMdmApplication : Application() {
                     }
                 }
             }
+        }
+
+        // Proactively fetch latest policy profile from server on application start
+        val devId = repository.deviceId.ifBlank { mqttManager.getEffectiveDeviceId() }
+        if (devId.isNotBlank() && (repository.isEnrolled || deviceManager.isDeviceOwner())) {
+            apiClient.fetchAndApplyPolicy(devId)
         }
 
         if (repository.isEnrolled || deviceManager.isDeviceOwner()) {

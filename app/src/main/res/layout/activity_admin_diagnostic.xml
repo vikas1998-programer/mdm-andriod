@@ -14,7 +14,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🛠️ Admin Diagnostics &amp; Telemetry"
+            android:text="Admin Diagnostics &amp; Telemetry"
             android:textColor="@color/text_main"
             android:textSize="20sp"
             android:textStyle="bold"
@@ -35,7 +35,7 @@
             android:id="@+id/btnForceMqttSync"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="📡 Force MQTT Telemetry Publish"
+            android:text="Force MQTT Telemetry Publish"
             android:textColor="#FFFFFF"
             android:backgroundTint="@color/blue_primary"
             android:layout_marginTop="20dp" />
@@ -44,7 +44,7 @@
             android:id="@+id/btnExitKioskMode"
             android:layout_width="match_parent"
             android:layout_height="48dp"
-            android:text="🔓 Temporary Kiosk Exit (Admin Only)"
+            android:text="Temporary Kiosk Exit (Admin Only)"
             android:textColor="#FFFFFF"
             android:backgroundTint="@color/status_red"
             android:layout_marginTop="12dp" />

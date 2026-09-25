@@ -15,7 +15,7 @@ class TelemetrySyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        Log.i("TelemetrySyncWorker", "⏰ Periodic MDM Heartbeat Triggered.")
+        Log.i("TelemetrySyncWorker", "Periodic MDM Heartbeat Triggered.")
         val app = applicationContext as RrvMdmApplication
 
         // Ensure MQTT is connected

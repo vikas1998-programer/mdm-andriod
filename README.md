@@ -5,7 +5,7 @@
 ![Min SDK](https://img.shields.io/badge/Min%20SDK-28%20(Android%209)-orange.svg)
 ![Architecture](https://img.shields.io/badge/Architecture-Device%20Owner%20%2F%20Kiosk-purple.svg)
 
-## 📌 Overview
+##  Overview
 
 **RRV MDM Android DPC** is a purpose-built, high-security Android Enterprise Device Policy Controller (DPC) and Custom Lockdown Launcher designed for dedicated enterprise endpoints, single-purpose devices, and frontline kiosk fleets. 
 
@@ -13,7 +13,7 @@ Operating in **Device Owner (DO)** mode, the application enforces zero-trust pol
 
 ---
 
-## 🏗️ Architecture & Core Components
+## Architecture & Core Components
 
 ```
                     MDM SERVER (Spring Boot + MQTT Broker)
@@ -54,7 +54,7 @@ Operating in **Device Owner (DO)** mode, the application enforces zero-trust pol
 
 ---
 
-## 🛠️ Technology Stack
+## ️ Technology Stack
 
 - **Language:** Kotlin 1.9.22
 - **Android SDK:** Compile SDK 34, Target SDK 34, Min SDK 28
@@ -69,7 +69,7 @@ Operating in **Device Owner (DO)** mode, the application enforces zero-trust pol
 
 ---
 
-## 🚀 Building & Testing
+## Building & Testing
 
 ### Prerequisites
 - Android Studio Iguana / Jellyfish or later
@@ -94,7 +94,7 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
-## 📲 Device Provisioning (Device Owner Setup)
+##  Device Provisioning (Device Owner Setup)
 
 ### Option A: ADB Provisioning (Development / Lab Testing)
 1. Factory reset device or ensure no accounts (Google/Samsung) are added on device:
@@ -123,7 +123,7 @@ Scan the QR code generated from the RRV MDM Portal containing the provisioning b
 
 ---
 
-## 🔒 Security Notes
+##  Security Notes
 
 - No private keystores or credentials are baked into source control.
 - All MQTT and HTTP communications are secured via TLS 1.3 / mTLS.

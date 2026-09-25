@@ -92,7 +92,7 @@ class GeofenceTransitionEvaluator(
                     if (elapsed >= dwellThresholdMs) {
                         state.status = PresenceStatus.OUTSIDE
                         state.lastActionFiredTimestamp = now
-                        RrvLog.w(TAG, "🚨 Zone [${zone.name}]: Confirmed GEOFENCE EXIT after ${elapsed / 1000}s dwell window.")
+                        RrvLog.w(TAG, "Zone [${zone.name}]: Confirmed GEOFENCE EXIT after ${elapsed / 1000}s dwell window.")
                         GeofenceTransitionEvent.BreachExit(zone, elapsed)
                     } else {
                         null
@@ -121,7 +121,7 @@ class GeofenceTransitionEvaluator(
                     if (elapsed >= dwellThresholdMs) {
                         state.status = PresenceStatus.INSIDE
                         state.lastActionFiredTimestamp = now
-                        RrvLog.i(TAG, "✓ Zone [${zone.name}]: Confirmed GEOFENCE RE-ENTRY after ${elapsed / 1000}s dwell window.")
+                        RrvLog.i(TAG, "Zone [${zone.name}]: Confirmed GEOFENCE RE-ENTRY after ${elapsed / 1000}s dwell window.")
                         GeofenceTransitionEvent.ValidEntry(zone, elapsed)
                     } else {
                         null

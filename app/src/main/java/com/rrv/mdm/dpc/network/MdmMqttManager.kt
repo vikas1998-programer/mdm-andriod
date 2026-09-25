@@ -46,7 +46,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         .build()
 
     private var mqttClient: MqttAsyncClient? = null
-    private var isConnecting = false
 
     private val app get() = context.applicationContext as? RrvMdmApplication
     private val repository get() = (context.applicationContext as RrvMdmApplication).repository
@@ -61,20 +60,22 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     }
 
     override fun onConfigurationChanged(newConfig: ServerConfiguration) {
-        RrvLog.i(TAG, "🔄 Dynamic Server Configuration changed to v${newConfig.configurationVersion} [Broker: ${newConfig.mqtt.serverUri}]. Reconnecting...")
+        RrvLog.i(TAG, "Server configuration changed to v${newConfig.configurationVersion} (broker: ${newConfig.mqtt.serverUri}). Reconnecting...")
         reconnect()
     }
 
     private val connectLock = Any()
     private var onConnectJob: Job? = null
     private var heartbeatJob: Job? = null
+    @Volatile private var isConnecting = false
+    @Volatile private var lastConnectAttempt = 0L
 
     fun reconnect() {
         synchronized(connectLock) {
             try {
                 mqttClient?.setCallback(null)
                 if (mqttClient?.isConnected == true) {
-                    mqttClient?.disconnectForcibly(1000L)
+                    mqttClient?.disconnectForcibly(500L)
                 }
                 mqttClient?.close()
             } catch (_: Exception) {}
@@ -84,7 +85,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         connect()
     }
 
-    private fun publishDeviceLog(entry: RrvLog.DeviceLogEntry) {
+    fun publishDeviceLog(entry: RrvLog.DeviceLogEntry) {
         if (!isConnected()) return
         val deviceId = getEffectiveDeviceId()
         val topic = "rrv/devices/$deviceId/logs"
@@ -100,8 +101,13 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         }
 
         synchronized(connectLock) {
-            if (mqttClient?.isConnected == true || isConnecting) {
-                RrvLog.d(TAG, "MQTT already connected or in connection progress.")
+            val now = System.currentTimeMillis()
+            if (mqttClient?.isConnected == true) {
+                RrvLog.d(TAG, "MQTT already connected.")
+                return
+            }
+            if (isConnecting && (now - lastConnectAttempt < 15_000L)) {
+                RrvLog.d(TAG, "MQTT connection in progress, skipping duplicate attempt.")
                 return
             }
 
@@ -114,26 +120,23 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             }
 
             isConnecting = true
+            lastConnectAttempt = now
             val currentConfig = configProvider?.getCurrentConfig()
-            val serverUri = currentConfig?.mqtt?.serverUri?.takeIf { it.isNotBlank() && !it.endsWith(":0") && !it.contains("://:0") }
-                ?: run {
-                    val brokerHost = repository.mqttBrokerHost
-                    val port = repository.mqttPort
-                    if (brokerHost.isNotBlank() && port > 0) {
-                        if (port == 8883) "ssl://$brokerHost:$port" else "tcp://$brokerHost:$port"
-                    } else {
-                        val sUrl = configProvider?.getBootstrapServerUrl() ?: repository.serverUrl
-                        val uri = try { if (sUrl.isNotBlank()) java.net.URI(sUrl) else null } catch (_: Exception) { null }
-                        val host = uri?.host ?: ""
-                        if (host.contains("ngrok") || host.contains("trycloudflare") || host.contains("cloudflare") || host.isBlank()) {
-                            com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_TCP_URI
-                        } else {
-                            val isHttps = uri?.scheme?.equals("https", ignoreCase = true) == true
-                            val defaultPort = if (isHttps) com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_TLS_PORT else com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_PORT
-                            if (isHttps) "ssl://$host:$defaultPort" else "tcp://$host:$defaultPort"
-                        }
-                    }
-                }
+            val serverUri = currentConfig?.mqtt?.serverUri?.takeIf { 
+                it.isNotBlank() && !it.endsWith(":0") && !it.contains("://:0") && 
+                (!it.contains("localhost") && !it.contains("127.0.0.1") || repository.serverUrl.contains("localhost") || repository.serverUrl.contains("127.0.0.1"))
+            } ?: run {
+                val sUrl = configProvider?.getBootstrapServerUrl() ?: repository.serverUrl
+                val uri = try { if (sUrl.isNotBlank()) java.net.URI(sUrl) else null } catch (_: Exception) { null }
+                val sHost = uri?.host?.takeIf { it.isNotBlank() } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.SERVER_HOST
+                val isHttps = uri?.scheme?.equals("https", ignoreCase = true) == true
+                val defaultPort = if (isHttps) com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_TLS_PORT else com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_PORT
+                val brokerHost = repository.mqttBrokerHost.takeIf { 
+                    it.isNotBlank() && (!it.contains("localhost") && !it.contains("127.0.0.1") || sHost.contains("localhost") || sHost.contains("127.0.0.1")) 
+                } ?: sHost
+                val port = if (repository.mqttPort > 0) repository.mqttPort else defaultPort
+                if (isHttps || port == 8883) "ssl://$brokerHost:$port" else "tcp://$brokerHost:$port"
+            }
 
             if (serverUri.isNullOrBlank() || serverUri.endsWith(":0") || serverUri.contains("://:0") || serverUri.startsWith("tcp://:") || serverUri.startsWith("ssl://:")) {
                 isConnecting = false
@@ -143,7 +146,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             val clientId = "rrv-dpc-$deviceId"
 
             try {
-                RrvLog.mqtt("Initializing Enterprise MQTT Client -> $serverUri (ClientID: $clientId)...")
+                RrvLog.mqtt("Initializing MQTT client: serverUri=$serverUri, clientId=$clientId")
                 val client = MqttAsyncClient(serverUri, clientId, MemoryPersistence())
                 client.setCallback(this)
                 mqttClient = client
@@ -170,13 +173,13 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                 client.connect(options, null, object : IMqttActionListener {
                     override fun onSuccess(asyncActionToken: IMqttToken?) {
                         isConnecting = false
-                        RrvLog.mqtt("✓ Enterprise MQTT Connected -> $serverUri!")
+                        RrvLog.i(TAG, "MQTT connection established: serverUri=$serverUri")
                         onConnectedSuccessfully()
                     }
 
                     override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
                         isConnecting = false
-                        RrvLog.e(TAG, "✕ Enterprise MQTT Connection Failed: ${exception?.message}", exception)
+                        RrvLog.e(TAG, "MQTT connection failed: serverUri=$serverUri, error=${exception?.message}", exception)
                     }
                 })
             } catch (e: Exception) {
@@ -197,24 +200,22 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             val androidId = getAndroidId()
             val repoDevId = repository.deviceId.takeIf { it.isNotBlank() }
 
-            // 1. Subscribe to Device Identification Hierarchy & Fleet-Wide Command Topics
+            // 1. Subscribe to Device Command Topics
             val topicsToSubscribe = linkedSetOf<String>()
             topicsToSubscribe.add("rrv/devices/$effectiveId/commands")
-            if (!imei.isNullOrBlank()) {
+            if (!imei.isNullOrBlank() && imei != effectiveId) {
                 topicsToSubscribe.add("rrv/devices/$imei/commands")
             }
-            if (!serial.isNullOrBlank()) {
+            if (!serial.isNullOrBlank() && serial != effectiveId) {
                 topicsToSubscribe.add("rrv/devices/$serial/commands")
             }
-            if (!repoDevId.isNullOrBlank()) {
+            if (!repoDevId.isNullOrBlank() && repoDevId != effectiveId) {
                 topicsToSubscribe.add("rrv/devices/$repoDevId/commands")
             }
-            if (!androidId.isNullOrBlank()) {
+            if (!androidId.isNullOrBlank() && androidId != effectiveId) {
                 topicsToSubscribe.add("rrv/devices/$androidId/commands")
             }
             topicsToSubscribe.add("rrv/devices/all/commands")
-            topicsToSubscribe.add("rrv/broadcast/#")
-            topicsToSubscribe.add("rrv/commands/+")
 
             for (topic in topicsToSubscribe) {
                 subscribe(topic, QOS_COMMANDS)
@@ -240,6 +241,14 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
             // 4. Fetch any pending commands missed while offline
             fetchPendingCommandsFromServer()
+
+            // 5. Fetch and enforce latest policy profile upon connection / reconnection
+            if (effectiveId.isNotBlank()) {
+                RrvLog.i(TAG, "Initiating policy fetch on MQTT connect: deviceId=$effectiveId")
+                app?.apiClient?.fetchAndApplyPolicy(effectiveId) { success ->
+                    RrvLog.i(TAG, "Policy sync completed: deviceId=$effectiveId, success=$success")
+                }
+            }
         }
     }
 
@@ -256,7 +265,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val jwt = repository.deviceJwt
         val endpoint = "$serverUrl/api/v1/commands/device/$deviceId/pending"
 
-        RrvLog.net("📤 [PENDING-CMDS-REQUEST] Requesting pending commands from $endpoint...")
+        RrvLog.d(TAG, "Requesting pending commands from $endpoint")
         val request = okhttp3.Request.Builder()
             .url(endpoint)
             .get()
@@ -265,10 +274,10 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
         httpClient.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                RrvLog.w(TAG, "⚠️ [PENDING-CMDS-ERROR] Could not fetch pending commands from $endpoint: ${e.message}")
+                RrvLog.w(TAG, "Could not fetch pending commands from $endpoint: ${e.message}")
                 if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
-                    RrvLog.i(TAG, "Attempting ADB reverse loopback commands fetch from http://127.0.0.1:8080...")
-                    val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/commands/device/$deviceId/pending"
+                    RrvLog.i(TAG, "Attempting ADB reverse loopback commands fetch from http://127.0.0.1:8080")
+                    val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/commands/$deviceId/pending"
                     val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
                     httpClient.newCall(fallbackReq).enqueue(object : okhttp3.Callback {
                         override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
@@ -276,13 +285,12 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                         }
                         override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                             val respBody = response.body?.string() ?: "[]"
-                            RrvLog.net("📥 [FALLBACK-PENDING-CMDS-RESPONSE] HTTP ${response.code} | Server Data (${respBody.length} chars): $respBody")
                             if (!response.isSuccessful) return
                             try {
                                 val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
                                 val pendingCmds: List<MqttCommandPayload> = gson.fromJson(respBody, type) ?: emptyList()
                                 if (pendingCmds.isNotEmpty()) {
-                                    RrvLog.i(TAG, "📬 [Fallback] Parsed ${pendingCmds.size} pending commands from server — executing...")
+                                    RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server fallback")
                                     pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
                                 }
                             } catch (e: Exception) {
@@ -295,13 +303,12 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                 val body = response.body?.string() ?: "[]"
-                RrvLog.net("📥 [PENDING-CMDS-RESPONSE] HTTP ${response.code} from $endpoint | Server Data (${body.length} chars): $body")
                 if (!response.isSuccessful) return
                 try {
                     val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
                     val pendingCmds: List<MqttCommandPayload> = gson.fromJson(body, type) ?: emptyList()
                     if (pendingCmds.isNotEmpty()) {
-                        RrvLog.i(TAG, "📬 Parsed ${pendingCmds.size} pending commands from server — executing...")
+                        RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server")
                         pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
                     } else {
                         RrvLog.d(TAG, "No pending commands found on server.")
@@ -322,11 +329,13 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                     try {
                         publishTelemetry(null, isGeofenceCompliant = true)
                     } catch (e: Exception) {
-                        RrvLog.w(TAG, "Active heartbeat tick error: ${e.message}")
+                        RrvLog.w(TAG, "Heartbeat telemetry publish error: ${e.message}")
                     }
                 } else if (repository.isEnrolled || app?.deviceManager?.isDeviceOwner() == true) {
-                    RrvLog.d(TAG, "Heartbeat tick: MQTT client disconnected, reconnecting...")
-                    reconnect()
+                    if (!isConnecting) {
+                        RrvLog.d(TAG, "Heartbeat tick: MQTT disconnected, initiating connect...")
+                        connect()
+                    }
                 }
             }
         }
@@ -339,19 +348,19 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
     override fun connectComplete(reconnect: Boolean, serverURI: String?) {
         isConnecting = false
-        RrvLog.mqtt("✓ MQTT ConnectComplete (Reconnect: $reconnect) -> $serverURI")
+        RrvLog.i(TAG, "MQTT connect completed: reconnect=$reconnect, serverURI=$serverURI")
         onConnectedSuccessfully()
     }
 
     override fun connectionLost(cause: Throwable?) {
         isConnecting = false
-        RrvLog.w(TAG, "⚠️ MQTT Connection lost: ${cause?.message}. Auto-reconnect active in background...")
+        RrvLog.w(TAG, "MQTT connection lost: ${cause?.message}")
     }
 
     override fun messageArrived(topic: String?, message: MqttMessage?) {
         if (message == null || topic == null) return
         val payloadStr = String(message.payload, StandardCharsets.UTF_8)
-        RrvLog.json("MQTT-TRANSPORT", "📥 [MQTT-COMMAND-RECEIVED] Topic: [$topic] | QoS: ${message.qos} | Size: ${payloadStr.length} bytes", payloadStr)
+        RrvLog.json("MQTT-TRANSPORT", "Topic: [$topic] | QoS: ${message.qos} | Size: ${payloadStr.length} bytes", payloadStr)
 
         try {
             val cmd = gson.fromJson(payloadStr, MqttCommandPayload::class.java)
@@ -362,12 +371,12 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                                    cmd.payloadJson != "null"
 
             if (hasInlinePayload) {
-                RrvLog.i(TAG, "⚡ [INSTANT-EXEC] Executing '${cmd.commandType}' with inline payload (${cmd.payloadJson?.length}B)...")
+                RrvLog.d(TAG, "Executing command with inline payload: type='${cmd.commandType}', length=${cmd.payloadJson?.length}")
                 handleInboundCommand(cmd, payloadStr)
                 return
             }
 
-            // Priority 2: If root JSON object contains payload properties (e.g. title, message, newPin, policyId), wrap and execute
+            // Priority 2: If root JSON object contains payload properties, wrap and execute
             val rawMap = try { gson.fromJson(payloadStr, Map::class.java) } catch (_: Exception) { null }
             val hasDirectFields = rawMap != null && (
                 rawMap.containsKey("title") || 
@@ -382,7 +391,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             )
 
             if (hasDirectFields) {
-                RrvLog.i(TAG, "⚡ [INSTANT-EXEC] Executing '${cmd.commandType}' with direct properties from MQTT packet...")
+                RrvLog.d(TAG, "Executing command with direct properties: type='${cmd.commandType}'")
                 val constructedCmd = cmd.copy(payloadJson = payloadStr)
                 handleInboundCommand(constructedCmd, payloadStr)
                 return
@@ -390,7 +399,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
             // Priority 3: Fallback to REST fetch if payload was omitted due to size
             if (!cmd.commandId.isNullOrBlank()) {
-                RrvLog.i(TAG, "🔍 [SIGNAL-FETCH] Fetching full payload via REST for '${cmd.commandType}' [${cmd.commandId}]...")
+                RrvLog.d(TAG, "Fetching command payload via REST: type='${cmd.commandType}', commandId=${cmd.commandId}")
                 fetchCommandAndExecute(cmd.commandId, cmd.commandType)
             } else {
                 handleInboundCommand(cmd, payloadStr)
@@ -405,7 +414,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val endpoint = "$serverUrl/api/v1/commands/$commandId"
         val jwt = repository.deviceJwt
 
-        RrvLog.net("📤 [COMMAND-FETCH-REQUEST] Requesting command payload from $endpoint (commandId=$commandId)...")
+        RrvLog.d(TAG, "Requesting command payload from $endpoint (commandId=$commandId)")
 
         val request = okhttp3.Request.Builder()
             .url(endpoint)
@@ -415,7 +424,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
         httpClient.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                RrvLog.e(TAG, "❌ [COMMAND-FETCH-ERROR] REST fetch failed for commandId=$commandId: ${e.message}")
+                RrvLog.e(TAG, "REST command fetch failed: commandId=$commandId, error=${e.message}")
                 if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
                     val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/commands/$commandId"
                     val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
@@ -426,7 +435,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                         }
                         override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                             val body = response.body?.string() ?: "{}"
-                            RrvLog.net("📥 [FALLBACK-COMMAND-FETCH-RESPONSE] HTTP ${response.code} for commandId=$commandId | Server Data: $body")
                             if (response.isSuccessful) {
                                 try {
                                     val fullCmd = gson.fromJson(body, MqttCommandPayload::class.java)
@@ -448,7 +456,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                 val body = response.body?.string() ?: "{}"
-                RrvLog.net("📥 [COMMAND-FETCH-RESPONSE] HTTP ${response.code} for commandId=$commandId | Server Data (${body.length} chars): $body")
                 if (response.isSuccessful) {
                     try {
                         val fullCmd = gson.fromJson(body, MqttCommandPayload::class.java)
@@ -457,7 +464,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                         RrvLog.e(TAG, "Failed to parse REST command response", e)
                     }
                 } else {
-                    RrvLog.w(TAG, "⚠️ REST fetch returned HTTP ${response.code} for $commandId — executing with signal only")
+                    RrvLog.w(TAG, "REST command fetch returned status ${response.code} for commandId=$commandId")
                     val fallback = MqttCommandPayload(commandId, commandType, "{}")
                     handleInboundCommand(fallback)
                 }
@@ -596,7 +603,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
             publish("rrv/devices/$repoDevId/heartbeat", jsonStr, QOS_TELEMETRY, false)
         }
 
-        RrvLog.d(TAG, "📡 Outbound telemetry streamed: Bat=$batteryPct%, Charging=$isCharging, WiFi=$wifiSsid, Carrier=$carrierName, IMEI=$imei, Serial=$serial")
+        RrvLog.d(TAG, "Outbound telemetry published: batteryPct=$batteryPct, charging=$isCharging, wifiSsid=$wifiSsid, carrier=$carrierName, imei=$imei, serial=$serial")
     }
 
 
@@ -659,15 +666,19 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
             val topic = "rrv/devices/$deviceId/app_events"
             val chunks = appList.chunked(8)
-            for (chunk in chunks) {
-                val payload = mapOf(
-                    "event" to "INVENTORY_SYNC",
-                    "apps" to chunk,
-                    "timestamp" to System.currentTimeMillis()
-                )
-                publish(topic, gson.toJson(payload), 1, false)
+            CoroutineScope(Dispatchers.IO).launch {
+                for (chunk in chunks) {
+                    if (!isConnected()) break
+                    val payload = mapOf(
+                        "event" to "INVENTORY_SYNC",
+                        "apps" to chunk,
+                        "timestamp" to System.currentTimeMillis()
+                    )
+                    publish(topic, gson.toJson(payload), 1, false)
+                    delay(80L)
+                }
+                RrvLog.i(TAG, "Published package inventory: count=${appList.size}, chunks=${chunks.size}")
             }
-            RrvLog.i(TAG, "📦 Published inventory of ${appList.size} packages (in ${chunks.size} chunks) to MDM backend")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to publish app inventory: ${e.message}", e)
         }
@@ -678,7 +689,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val topic = "rrv/devices/$deviceId/events"
         val json = """{"alertType":"$alertType","message":"$message","timestamp":${System.currentTimeMillis()}}"""
         publish(topic, json, 1, false)
-        RrvLog.w("SECURITY-ALERT", "🚨 Security alert dispatched [$alertType]: $message")
+        RrvLog.w("SECURITY-ALERT", "Security alert dispatched: alertType=$alertType, message=$message")
     }
 
     fun publishCommandAck(commandId: String, status: String, message: String) {
@@ -686,7 +697,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         val topic = "rrv/devices/$deviceId/acks"
         val ack = MqttCommandAck(commandId, deviceId, status, message)
         publish(topic, gson.toJson(ack), 1, false)
-        RrvLog.mqtt("✓ Command ACK published for $commandId (Status: $status)")
+        RrvLog.d(TAG, "Command ACK published: commandId=$commandId, status=$status")
 
         // Dual-ACK via REST to guarantee server status sync
         try {
@@ -706,8 +717,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                         RrvLog.d(TAG, "Dual-ACK REST fallback error: ${e.message}")
                     }
                     override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                        val ackResp = response.body?.string() ?: ""
-                        RrvLog.d(TAG, "📥 [REST-ACK-RESPONSE] HTTP ${response.code} for commandId=$commandId | Server Data: $ackResp")
                         response.close()
                     }
                 })
@@ -733,10 +742,10 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         try {
             mqttClient?.subscribe(topic, qos, null, object : IMqttActionListener {
                 override fun onSuccess(asyncActionToken: IMqttToken?) {
-                    RrvLog.mqtt("✓ Subscribed to topic: $topic (QoS $qos)")
+                    RrvLog.d(TAG, "Subscribed to topic: topic=$topic, qos=$qos")
                 }
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
-                    RrvLog.e(TAG, "✕ Failed to subscribe to topic: $topic", exception)
+                    RrvLog.e(TAG, "Failed to subscribe to topic: topic=$topic", exception)
                 }
             })
         } catch (e: Exception) {

@@ -19,7 +19,7 @@ object BatteryOptimizationHelper {
     @SuppressLint("BatteryLife")
     fun requestIgnoreBatteryOptimizations(context: Context) {
         if (isIgnoringBatteryOptimizations(context)) {
-            RrvLog.i(TAG, "✓ Device is already whitelisted from battery optimizations / Doze mode.")
+            RrvLog.i(TAG, "Device is already whitelisted from battery optimizations / Doze mode.")
             return
         }
 

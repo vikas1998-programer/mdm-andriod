@@ -37,7 +37,7 @@ class SilentInstallReceiver : BroadcastReceiver() {
 
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
-                RrvLog.i(TAG, "✅ Package '$packageName' installed successfully via Device Owner PackageInstaller Session.")
+                RrvLog.i(TAG, "Package '$packageName' installed successfully via Device Owner PackageInstaller Session.")
                 val deviceId = repository?.deviceId ?: ""
                 if (deviceId.isNotBlank() && mqttManager != null) {
                     val topic = "rrv/devices/$deviceId/app_events"
@@ -66,7 +66,7 @@ class SilentInstallReceiver : BroadcastReceiver() {
             }
 
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
-                RrvLog.w(TAG, "⚠️ PackageInstaller requested user confirmation for '$packageName'")
+                RrvLog.w(TAG, "PackageInstaller requested user confirmation for '$packageName'")
                 @Suppress("DEPRECATION")
                 val confirmIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
@@ -80,27 +80,27 @@ class SilentInstallReceiver : BroadcastReceiver() {
             }
 
             PackageInstaller.STATUS_FAILURE_STORAGE -> {
-                RrvLog.e(TAG, "✕ Silent install of '$packageName' failed: INSUFFICIENT_STORAGE ($message)")
+                RrvLog.e(TAG, "Silent install of '$packageName' failed: INSUFFICIENT_STORAGE ($message)")
                 reportFailure(app, commandId, packageName, "INSUFFICIENT_STORAGE: $message")
             }
 
             PackageInstaller.STATUS_FAILURE_INVALID -> {
-                RrvLog.e(TAG, "✕ Silent install of '$packageName' failed: INVALID_APK ($message)")
+                RrvLog.e(TAG, "Silent install of '$packageName' failed: INVALID_APK ($message)")
                 reportFailure(app, commandId, packageName, "INVALID_APK: $message")
             }
 
             PackageInstaller.STATUS_FAILURE_CONFLICT -> {
-                RrvLog.e(TAG, "✕ Silent install of '$packageName' failed: SIGNATURE_CONFLICT ($message)")
+                RrvLog.e(TAG, "Silent install of '$packageName' failed: SIGNATURE_CONFLICT ($message)")
                 reportFailure(app, commandId, packageName, "SIGNATURE_CONFLICT: $message")
             }
 
             PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> {
-                RrvLog.e(TAG, "✕ Silent install of '$packageName' failed: INCOMPATIBLE_SDK ($message)")
+                RrvLog.e(TAG, "Silent install of '$packageName' failed: INCOMPATIBLE_SDK ($message)")
                 reportFailure(app, commandId, packageName, "INCOMPATIBLE_SDK: $message")
             }
 
             else -> {
-                RrvLog.e(TAG, "✕ Silent install of '$packageName' failed with code $status ($message)")
+                RrvLog.e(TAG, "Silent install of '$packageName' failed with code $status ($message)")
                 reportFailure(app, commandId, packageName, "INSTALL_FAILED_CODE_$status: $message")
             }
         }

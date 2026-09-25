@@ -93,7 +93,7 @@
             android:id="@+id/tvStoreAppActionBadge"
             android:layout_width="wrap_content"
             android:layout_height="32dp"
-            android:text="🚀 Launch"
+            android:text="Launch"
             android:textColor="#38BDF8"
             android:textSize="11sp"
             android:fontFamily="sans-serif-bold"

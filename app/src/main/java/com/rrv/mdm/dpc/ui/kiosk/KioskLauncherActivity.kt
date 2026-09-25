@@ -153,7 +153,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         if (!app.repository.isEnrolled) {
             // Not enrolled yet -> Display Enrollment CTA
-            binding.tvWatermarkSubtitle.text = "⚠️ TAP TO ENROLL DEVICE IN RRV MDM"
+            binding.tvWatermarkSubtitle.text = "TAP TO ENROLL DEVICE IN RRV MDM"
             binding.tvWatermarkSubtitle.setTextColor(0xFFF59E0B.toInt()) // Amber warning color
             binding.rvKioskApps.visibility = View.GONE
             binding.layoutWatermark.visibility = View.VISIBLE
@@ -230,7 +230,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         AlertDialog.Builder(this)
-            .setTitle("🛡️ IT Admin Security Access")
+            .setTitle("IT Admin Security Access")
             .setMessage("Enter the Master Admin PIN to open diagnostics, enterprise hub, emergency settings, or sync policies.")
             .setView(input)
             .setPositiveButton("Authenticate") { _, _ ->
@@ -240,7 +240,7 @@ class KioskLauncherActivity : AppCompatActivity() {
                 if (enteredPin == configuredPin || enteredPin == "123456") {
                     showEmergencyRecoveryDialog()
                 } else {
-                    Toast.makeText(this, "❌ Invalid Security PIN", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Invalid Security PIN", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)
@@ -249,17 +249,17 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     private fun showEmergencyRecoveryDialog() {
         val options = arrayOf(
-            "📊 Launch Admin Diagnostics Studio",
-            "🏪 Open Enterprise MDM Client Hub",
-            "🔄 Sync Zero-Trust Policy Now",
-            "🔒 Lock Device Screen",
-            "🔓 Emergency Unlock (Release LockTask)",
-            "⚙️ Open Android System Settings",
-            "⚠️ Factory Reset & Wipe Device (Complete Restore)"
+            "Launch Admin Diagnostics Studio",
+            "Open Enterprise MDM Client Hub",
+            "Sync Zero-Trust Policy Now",
+            "Lock Device Screen",
+            "Emergency Unlock (Release LockTask)",
+            "Open Android System Settings",
+            "Factory Reset & Wipe Device (Complete Restore)"
         )
 
         AlertDialog.Builder(this)
-            .setTitle("🛡️ IT Admin Device Management")
+            .setTitle("IT Admin Device Management")
             .setItems(options) { _, which ->
                 val app = application as RrvMdmApplication
                 when (which) {
@@ -273,7 +273,7 @@ class KioskLauncherActivity : AppCompatActivity() {
                     }
                     2 -> {
                         // Sync Policy
-                        Toast.makeText(this, "🔄 Syncing Zero-Trust Policy...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Syncing Zero-Trust Policy...", Toast.LENGTH_SHORT).show()
                         val latestPolicy = app.repository.getActivePolicy()
                         app.policyManager.applyPolicy(latestPolicy)
                         applyManagementMode(latestPolicy)
@@ -282,13 +282,13 @@ class KioskLauncherActivity : AppCompatActivity() {
                     3 -> {
                         // Lock Screen
                         app.policyManager.lockScreenNow()
-                        Toast.makeText(this, "🔒 Screen Locked", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Screen Locked", Toast.LENGTH_SHORT).show()
                     }
                     4 -> {
                         // Emergency Exit Kiosk LockTask
                         try {
                             app.lockTaskController.stopKioskLock(this)
-                            Toast.makeText(this, "🔓 Kiosk LockTask released successfully.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "Kiosk LockTask released successfully.", Toast.LENGTH_LONG).show()
                         } catch (e: Exception) {
                             Toast.makeText(this, "Unlock Error: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
@@ -305,7 +305,7 @@ class KioskLauncherActivity : AppCompatActivity() {
                     6 -> {
                         // Confirm Factory Reset
                         AlertDialog.Builder(this)
-                            .setTitle("⚠️ Confirm Factory Reset")
+                            .setTitle("Confirm Factory Reset")
                             .setMessage("Are you sure you want to completely erase and restore this device to factory state? All data and MDM locks will be removed.")
                             .setPositiveButton("Wipe & Restore") { _, _ ->
                                 try {
@@ -336,7 +336,7 @@ class KioskLauncherActivity : AppCompatActivity() {
             val updatedPolicy = app.repository.getActivePolicy()
             app.policyManager.applyPolicy(updatedPolicy)
             applyManagementMode(updatedPolicy)
-            Toast.makeText(this@KioskLauncherActivity, "🛡️ Policy Updated: ${updatedPolicy.name}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this@KioskLauncherActivity, "Policy Updated: ${updatedPolicy.name}", Toast.LENGTH_LONG).show()
         }
     }
 

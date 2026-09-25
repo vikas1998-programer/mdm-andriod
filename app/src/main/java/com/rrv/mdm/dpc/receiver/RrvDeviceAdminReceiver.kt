@@ -28,16 +28,16 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == "com.rrv.mdm.ACTION_UNENROLL") {
-            Log.w(TAG, "⚠️ Received ACTION_UNENROLL broadcast. Clearing Device Owner and Device Admin privileges...")
+            Log.w(TAG, "Received ACTION_UNENROLL broadcast. Clearing Device Owner and Device Admin privileges...")
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             try {
                 if (dpm.isDeviceOwnerApp(context.packageName)) {
                     @Suppress("DEPRECATION")
                     dpm.clearDeviceOwnerApp(context.packageName)
-                    Log.i(TAG, "✓ Device Owner cleared successfully.")
+                    Log.i(TAG, "Device Owner cleared successfully.")
                 }
                 dpm.removeActiveAdmin(getComponentName(context))
-                Log.i(TAG, "✓ Active Admin removed successfully.")
+                Log.i(TAG, "Active Admin removed successfully.")
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing Device Owner", e)
             }
@@ -48,7 +48,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
-        Log.i(TAG, "🛡️ RRV MDM Device Admin Enabled successfully.")
+        Log.i(TAG, "RRV MDM Device Admin Enabled successfully.")
         val app = context.applicationContext as RrvMdmApplication
         if (app.policyManager.isDeviceOwner()) {
             app.lockTaskController.setAsDefaultHomeLauncher()
@@ -58,7 +58,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
         super.onProfileProvisioningComplete(context, intent)
-        Log.i(TAG, "🎉 Profile / Device Provisioning Complete. Initializing zero-trust hardware attestation...")
+        Log.i(TAG, "Profile / Device Provisioning Complete. Initializing zero-trust hardware attestation...")
 
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
 
@@ -95,10 +95,10 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
             if (!serverUrl.isNullOrBlank() && !token.isNullOrBlank()) {
                 app.apiClient.enrollDevice(serverUrl, token) { success, message ->
                     if (success) {
-                        Log.i(TAG, "✓ Zero-Touch automatic device enrollment succeeded.")
+                        Log.i(TAG, "Zero-Touch automatic device enrollment succeeded.")
                         app.mqttManager.connect()
                     } else {
-                        Log.e(TAG, "✕ Zero-Touch enrollment error: $message")
+                        Log.e(TAG, "Zero-Touch enrollment error: $message")
                     }
                 }
             } else {
@@ -123,12 +123,12 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onLockTaskModeEntering(context: Context, intent: Intent, pkg: String) {
         super.onLockTaskModeEntering(context, intent, pkg)
-        Log.i(TAG, "🔒 Entered Kiosk LockTask mode for package: $pkg")
+        Log.i(TAG, "Entered Kiosk LockTask mode for package: $pkg")
     }
 
     override fun onLockTaskModeExiting(context: Context, intent: Intent) {
         super.onLockTaskModeExiting(context, intent)
-        Log.w(TAG, "⚠️ Exited Kiosk LockTask mode. Checking policy containment...")
+        Log.w(TAG, "Exited Kiosk LockTask mode. Checking policy containment...")
         val repo = (context.applicationContext as RrvMdmApplication).repository
         val activePolicy = repo.getActivePolicy()
         if (activePolicy.kioskModeEnabled) {
@@ -144,7 +144,7 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onPasswordFailed(context: Context, intent: Intent) {
         super.onPasswordFailed(context, intent)
-        Log.w(TAG, "🚨 Password failure event intercepted. Reporting to MDM MQTT telemetry...")
+        Log.w(TAG, "Password failure event intercepted. Reporting to MDM MQTT telemetry...")
         (context.applicationContext as RrvMdmApplication).mqttManager.publishSecurityAlert("PASSWORD_FAILED", "Incorrect PIN/password entered on device.")
     }
 
@@ -152,6 +152,6 @@ class RrvDeviceAdminReceiver : DeviceAdminReceiver() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onPasswordSucceeded(context: Context, intent: Intent) {
         super.onPasswordSucceeded(context, intent)
-        Log.i(TAG, "✓ Device successfully unlocked by authorized operator.")
+        Log.i(TAG, "Device successfully unlocked by authorized operator.")
     }
 }

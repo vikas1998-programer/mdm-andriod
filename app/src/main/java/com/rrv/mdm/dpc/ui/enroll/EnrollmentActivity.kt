@@ -46,14 +46,14 @@ class EnrollmentActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            binding.tvEnrollStatus.text = "🔄 Contacting Enterprise Enrollment Gateway..."
+            binding.tvEnrollStatus.text = "Contacting Enterprise Enrollment Gateway..."
             binding.btnEnrollSubmit.isEnabled = false
 
             app.apiClient.enrollDevice(serverUrl, token) { success, message ->
                 runOnUiThread {
                     binding.btnEnrollSubmit.isEnabled = true
                     if (success) {
-                        Toast.makeText(this, "🎉 Enrollment Complete!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Enrollment Complete!", Toast.LENGTH_LONG).show()
 
                         // Connect Real-Time MQTT Command Tunnel
                         app.mqttManager.connect()
@@ -69,13 +69,24 @@ class EnrollmentActivity : AppCompatActivity() {
                             app.deviceManager.applyPolicy(policy)
                         }
 
+                        // Trigger mandatory server policy fetch
+                        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
+                        if (devId.isNotBlank()) {
+                            app.apiClient.fetchAndApplyPolicy(devId) { _ ->
+                                if (app.deviceManager.isDeviceOwner()) {
+                                    val freshPolicy = app.repository.getActivePolicy()
+                                    app.deviceManager.applyPolicy(freshPolicy, force = true)
+                                }
+                            }
+                        }
+
                         val homeIntent = Intent(this, com.rrv.mdm.dpc.ui.home.RrvMdmHomeActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
                         startActivity(homeIntent)
                         finish()
                     } else {
-                        binding.tvEnrollStatus.text = "✕ Enrollment failed: $message"
+                        binding.tvEnrollStatus.text = "Enrollment failed: $message"
                         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                     }
                 }

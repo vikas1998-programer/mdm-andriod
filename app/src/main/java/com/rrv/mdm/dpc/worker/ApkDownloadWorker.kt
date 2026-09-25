@@ -122,7 +122,7 @@ class ApkDownloadWorker(
         if (expectedSha.isNotBlank()) {
             val actualSha = sha256(apkFile)
             if (!actualSha.equals(expectedSha, ignoreCase = true)) {
-                RrvLog.e(TAG, "❌ SHA-256 mismatch for $packageName! expected=$expectedSha got=$actualSha")
+                RrvLog.e(TAG, "SHA-256 mismatch for $packageName! expected=$expectedSha got=$actualSha")
                 apkFile.delete()
                 if (commandId.isNotBlank()) {
                     mqttManager.publishCommandAck(commandId, "FAILED", "SHA-256 integrity check failed")
@@ -132,13 +132,13 @@ class ApkDownloadWorker(
                 }
                 return Result.failure()
             }
-            RrvLog.i(TAG, "✓ SHA-256 verified for $packageName")
+            RrvLog.i(TAG, "SHA-256 verified for $packageName")
         }
 
         // ── Step 3: Silent Install via PackageInstaller ───────────────────
         try {
             silentInstall(apkFile, packageName, commandId)
-            RrvLog.i(TAG, "✅ APK install session committed to PackageInstaller: $packageName v$versionName (commandId: $commandId)")
+            RrvLog.i(TAG, "APK install session committed to PackageInstaller: $packageName v$versionName (commandId: $commandId)")
 
             if (commandId.isNotBlank()) {
                 CoroutineScope(Dispatchers.IO).launch {
@@ -194,7 +194,7 @@ class ApkDownloadWorker(
         val responseCode = connection.responseCode
         val contentLength = connection.contentLengthLong
         val contentType = connection.contentType ?: "unknown"
-        RrvLog.i(TAG, "📥 [APK-DOWNLOAD-RESPONSE] HTTP $responseCode from $fullUrl | Type: $contentType, Size: ${contentLength}B")
+        RrvLog.i(TAG, "[APK-DOWNLOAD-RESPONSE] HTTP $responseCode from $fullUrl | Type: $contentType, Size: ${contentLength}B")
 
         if (responseCode != HttpURLConnection.HTTP_OK) {
             throw IOException("Server returned HTTP $responseCode for $fullUrl")
@@ -205,7 +205,7 @@ class ApkDownloadWorker(
                 input.copyTo(output, bufferSize = 65536)
             }
         }
-        RrvLog.i(TAG, "✓ Downloaded ${dest.length() / 1024}KB → ${dest.absolutePath}")
+        RrvLog.i(TAG, "Downloaded ${dest.length() / 1024}KB → ${dest.absolutePath}")
     }
 
     // ── SHA-256 ───────────────────────────────────────────────────────────────

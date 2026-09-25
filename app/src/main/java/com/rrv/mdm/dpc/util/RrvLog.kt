@@ -56,27 +56,25 @@ object RrvLog {
     }
 
     // Contextual Tagged Logging Helpers
-    fun net(message: String) = i("REST-NETWORK", "🌐 $message")
-    fun mqtt(message: String) = i("MQTT-TRANSPORT", "📡 $message")
-    fun dpm(message: String) = i("DPM-POLICY", "🛡️ $message")
-    fun geo(message: String) = i("SPATIAL-GEO", "📍 $message")
-    fun kiosk(message: String) = i("KIOSK-LOCK", "🔒 $message")
-    fun boot(message: String) = i("DPC-LIFECYCLE", "⚡ $message")
+    fun net(message: String) = d("REST-NETWORK", message)
+    fun mqtt(message: String) = d("MQTT-TRANSPORT", message)
+    fun dpm(message: String) = i("DPM-POLICY", message)
+    fun geo(message: String) = d("SPATIAL-GEO", message)
+    fun kiosk(message: String) = i("KIOSK-LOCK", message)
+    fun boot(message: String) = i("DPC-LIFECYCLE", message)
 
     fun json(tag: String, header: String, jsonString: String) {
-        val banner = "══════════════════════════════════════════════════════════════"
-        i(tag, "$banner\n$header\n$banner")
+        d(tag, "JSON Payload ($header):")
         if (jsonString.length <= 3000) {
-            i(tag, jsonString)
+            d(tag, jsonString)
         } else {
             var i = 0
             while (i < jsonString.length) {
                 val end = Math.min(jsonString.length, i + 3000)
-                i(tag, jsonString.substring(i, end))
+                d(tag, jsonString.substring(i, end))
                 i += 3000
             }
         }
-        i(tag, banner)
     }
 
     private fun recordLog(level: String, tag: String, message: String): String {
@@ -97,7 +95,9 @@ object RrvLog {
 
         try {
             onLogPublished?.invoke(logEntry)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.d(DEFAULT_TAG, "Log publication listener error: ${e.message}")
+        }
 
         return entry
     }

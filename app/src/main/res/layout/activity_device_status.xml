@@ -53,7 +53,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="🟢 Device is Secure"
+                    android:text="Device is Secure"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
@@ -78,7 +78,7 @@
                     android:id="@+id/tvDeviceOwnerStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="✓ Android Enterprise Device Owner: Active"
+                    android:text="Android Enterprise Device Owner: Active"
                     android:textColor="#10B981"
                     android:textSize="13sp" />
 
@@ -86,7 +86,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="✓ Hardware Keystore Encryption: Enforced"
+                    android:text="Hardware Keystore Encryption: Enforced"
                     android:textColor="#10B981"
                     android:textSize="13sp" />
 
@@ -94,7 +94,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="✓ Zero-Trust System Restrictions: Applied"
+                    android:text="Zero-Trust System Restrictions: Applied"
                     android:textColor="#10B981"
                     android:textSize="13sp" />
             </LinearLayout>
@@ -170,7 +170,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="24dp"
                 android:backgroundTint="#2563EB"
-                android:text="🔄 Synchronize with RRV MDM"
+                android:text="Synchronize with RRV MDM"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold" />
         </LinearLayout>

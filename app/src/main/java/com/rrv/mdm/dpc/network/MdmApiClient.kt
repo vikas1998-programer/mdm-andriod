@@ -80,17 +80,17 @@ class MdmApiClient(private val context: Context) {
             .post(body)
             .build()
 
-        RrvLog.net("📤 [ENROLL-REQUEST] Dispatching device enrollment -> $endpoint (Token: ${token.take(8)}...)")
+        RrvLog.net("Dispatching device enrollment to $endpoint")
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.e(TAG, "✕ [ENROLL-NETWORK-ERROR] Connection failed to $cleanServerUrl: ${e.message}", e)
+                RrvLog.e(TAG, "Enrollment connection failed to $cleanServerUrl: ${e.message}", e)
                 callback(false, e.message ?: "Connection failed to server $cleanServerUrl")
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val respStr = response.body?.string() ?: ""
-                RrvLog.net("📥 [ENROLL-RESPONSE] HTTP ${response.code} received from server ($cleanServerUrl) | Payload: $respStr")
+                RrvLog.net("Enrollment HTTP ${response.code} received from $cleanServerUrl")
 
                 if (response.isSuccessful) {
                     try {
@@ -98,15 +98,15 @@ class MdmApiClient(private val context: Context) {
                         val devId = respMap["deviceId"]?.toString() ?: serial
                         val jwt = respMap["jwtSessionToken"]?.toString() ?: ""
                         val status = respMap["enrollmentStatus"]?.toString() ?: "ACTIVE"
-                        val message = respMap["approvalStatusMessage"]?.toString() ?: "Device enrolled successfully!"
+                        val message = respMap["approvalStatusMessage"]?.toString() ?: "Device enrolled successfully"
 
-                        RrvLog.i(TAG, "✓ [ENROLL-DATA] Parsed: DeviceId=$devId, Status=$status, HasJWT=${jwt.isNotBlank()}, Message='$message'")
+                        RrvLog.i(TAG, "Enrollment parsed: deviceId=$devId, status=$status, hasJwt=${jwt.isNotBlank()}")
 
                         if (status == "PENDING") {
                             repository.deviceId = devId
                             repository.serverUrl = cleanServerUrl
                             repository.enrollmentToken = token
-                            callback(false, "⏳ Registration Pending: $message")
+                            callback(false, "Registration Pending: $message")
                             return
                         }
 
@@ -132,7 +132,7 @@ class MdmApiClient(private val context: Context) {
                                 repository.serverUrl = serverConfig.apiBaseUrl
                                 repository.mqttBrokerHost = serverConfig.mqtt.host
                                 repository.mqttPort = serverConfig.mqtt.port
-                                RrvLog.i(TAG, "✓ [SERVER-CONFIG] Applied dynamic server config from enrollment: BaseUrl=${serverConfig.apiBaseUrl}, Broker=${serverConfig.mqtt.serverUri}")
+                                RrvLog.i(TAG, "Dynamic server configuration applied: baseUrl=${serverConfig.apiBaseUrl}, broker=${serverConfig.mqtt.serverUri}")
                             } catch (ce: Exception) {
                                 RrvLog.w(TAG, "Could not deserialize serverConfig directly: ${ce.message}")
                             }
@@ -157,7 +157,7 @@ class MdmApiClient(private val context: Context) {
                                 repository.serverUrl = cleanServerUrl
                                 repository.mqttBrokerHost = host
                                 repository.mqttPort = mqttPort
-                                RrvLog.i(TAG, "✓ [SERVER-CONFIG] Synthesized dynamic server config from URL: BaseUrl=$cleanServerUrl, Broker=$host:$mqttPort")
+                                RrvLog.i(TAG, "Synthesized dynamic server configuration: baseUrl=$cleanServerUrl, broker=$host:$mqttPort")
                             } catch (ue: Exception) {
                                 RrvLog.e(TAG, "Error synthesizing fallback server config", ue)
                             }
@@ -165,25 +165,18 @@ class MdmApiClient(private val context: Context) {
 
                         // 1. Automatically fetch full canonical policy profile via dedicated endpoint
                         val policyHash = respMap["policyHash"]?.toString()
-                        val policyId = respMap["policyId"]?.toString()
-                        if (!policyId.isNullOrBlank()) {
-                            RrvLog.i(TAG, "Fetching policy profile by policyId '$policyId' (Hash: $policyHash)...")
-                            fetchAndApplyPolicyById(policyId, currentHash = null) { policySuccess ->
-                                RrvLog.i(TAG, "Initial enrollment policy fetch by policyId result: $policySuccess")
-                            }
-                        } else {
-                            fetchAndApplyPolicy(devId, currentHash = null) { policySuccess ->
-                                RrvLog.i(TAG, "Initial enrollment policy fetch by deviceId result: $policySuccess (Hash: $policyHash)")
-                            }
+                        RrvLog.i(TAG, "Fetching canonical policy profile for device: deviceId=$devId")
+                        fetchAndApplyPolicy(devId, currentHash = null) { policySuccess ->
+                            RrvLog.i(TAG, "Initial enrollment policy fetch result: success=$policySuccess")
                         }
 
-                        callback(true, "Device enrolled successfully as Fully Managed Device Owner!")
+                        callback(true, "Device enrolled successfully")
                     } catch (e: Exception) {
                         RrvLog.e(TAG, "Error parsing enrollment response", e)
                         callback(true, "Enrolled with warning: ${e.message}")
                     }
                 } else {
-                    RrvLog.e(TAG, "✕ [ENROLL-REJECTED] Server rejected enrollment: HTTP ${response.code} | Response: $respStr")
+                    RrvLog.e(TAG, "Server rejected enrollment: status=${response.code}, response=$respStr")
                     callback(false, "Server rejected enrollment: HTTP ${response.code} ($respStr)")
                 }
             }
@@ -218,21 +211,21 @@ class MdmApiClient(private val context: Context) {
             reqBuilder.header("Authorization", "Bearer $jwt")
         }
 
-        RrvLog.d(TAG, "📤 [EVENTS-UPLOAD-REQUEST] Uploading ${events.size} queued events to $endpoint")
+        RrvLog.d(TAG, "Uploading queued events: count=${events.size}, endpoint=$endpoint")
 
         httpClient.newCall(reqBuilder.build()).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.e(TAG, "✕ [EVENTS-UPLOAD-ERROR] Failed to upload queued events to $endpoint: ${e.message}", e)
+                RrvLog.e(TAG, "Failed to upload queued events: endpoint=$endpoint, error=${e.message}", e)
                 callback(false, 0)
             }
 
             override fun onResponse(call: Call, response: Response) {
                 val respStr = response.body?.string() ?: ""
                 if (response.isSuccessful) {
-                    RrvLog.i(TAG, "📥 [EVENTS-UPLOAD-RESPONSE] HTTP ${response.code} from server | Uploaded ${events.size} events. Body: $respStr")
+                    RrvLog.d(TAG, "Events uploaded successfully: status=${response.code}, count=${events.size}")
                     callback(true, events.size)
                 } else {
-                    RrvLog.w(TAG, "⚠️ [EVENTS-UPLOAD-RESPONSE] Server rejected events: HTTP ${response.code} | Body: $respStr")
+                    RrvLog.w(TAG, "Server rejected events upload: status=${response.code}, response=$respStr")
                     callback(false, 0)
                 }
             }
@@ -248,11 +241,11 @@ class MdmApiClient(private val context: Context) {
         }
 
         val request = Request.Builder().url(fullUrl).build()
-        RrvLog.net("📤 [APK-DOWNLOAD-REQUEST] Fetching APK binary from $fullUrl...")
+        RrvLog.net("Downloading APK from $fullUrl")
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.e(TAG, "✕ [APK-DOWNLOAD-ERROR] Failed to download APK from $fullUrl: ${e.message}", e)
+                RrvLog.e(TAG, "Failed to download APK from $fullUrl: ${e.message}", e)
                 callback(false, null)
             }
 
@@ -260,10 +253,10 @@ class MdmApiClient(private val context: Context) {
                 val code = response.code
                 val contentLength = response.body?.contentLength() ?: -1L
                 val contentType = response.header("Content-Type") ?: "unknown"
-                RrvLog.net("📥 [APK-DOWNLOAD-RESPONSE] HTTP $code from $fullUrl | Content-Type: $contentType, Size: $contentLength bytes")
+                RrvLog.net("APK download response: status=$code, contentType=$contentType, size=$contentLength bytes")
 
                 if (!response.isSuccessful) {
-                    RrvLog.e(TAG, "✕ Server returned HTTP $code for APK download at $fullUrl")
+                    RrvLog.e(TAG, "Server returned HTTP $code for APK download at $fullUrl")
                     callback(false, null)
                     return
                 }
@@ -275,10 +268,10 @@ class MdmApiClient(private val context: Context) {
                             output.flush()
                         }
                     }
-                    RrvLog.i(TAG, "✓ APK saved successfully to ${destinationFile.absolutePath} (${destinationFile.length()} bytes)")
+                    RrvLog.i(TAG, "APK saved successfully: path=${destinationFile.absolutePath}, bytes=${destinationFile.length()}")
                     callback(true, destinationFile)
                 } catch (e: Exception) {
-                    RrvLog.e(TAG, "✕ Error saving APK binary from server", e)
+                    RrvLog.e(TAG, "Error saving APK binary from server", e)
                     callback(false, null)
                 } finally {
                     response.close()
@@ -309,16 +302,16 @@ class MdmApiClient(private val context: Context) {
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.w(TAG, "⚠️ [HEARTBEAT-ERROR] Heartbeat REST fallback failed to $endpoint: ${e.message}")
+                RrvLog.w(TAG, "Heartbeat REST fallback failed to $endpoint: ${e.message}")
                 if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
-                    RrvLog.i(TAG, "Attempting ADB reverse loopback heartbeat fallback to http://127.0.0.1:8080...")
+                    RrvLog.i(TAG, "Attempting ADB reverse loopback heartbeat fallback to http://127.0.0.1:8080")
                     val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/devices/$deviceId/heartbeat"
                     val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
                     httpClient.newCall(fallbackReq).enqueue(object : Callback {
                         override fun onFailure(call: Call, e: IOException) {}
                         override fun onResponse(call: Call, response: Response) {
                             val resp = response.body?.string() ?: ""
-                            RrvLog.d(TAG, "📥 [HEARTBEAT-RESPONSE] HTTP ${response.code} from loopback | Response: $resp")
+                            RrvLog.d(TAG, "Heartbeat loopback response status: ${response.code}")
                             response.close()
                         }
                     })
@@ -326,7 +319,7 @@ class MdmApiClient(private val context: Context) {
             }
             override fun onResponse(call: Call, response: Response) {
                 val respStr = response.body?.string() ?: ""
-                RrvLog.d(TAG, "📥 [HEARTBEAT-RESPONSE] HTTP ${response.code} from $endpoint | Response: $respStr")
+                RrvLog.d(TAG, "Heartbeat response received: status=${response.code}")
                 response.close()
             }
         })
@@ -365,11 +358,11 @@ class MdmApiClient(private val context: Context) {
         }
 
         val request = reqBuilder.build()
-        RrvLog.net("📤 [POLICY-FETCH-REQUEST] Requesting policy profile by ID '$policyId' from $endpoint (If-None-Match: $currentHash)...")
+        RrvLog.net("Requesting policy profile by ID: policyId=$policyId, endpoint=$endpoint")
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.w(TAG, "⚠️ [POLICY-FETCH-ERROR] Failed to fetch policy by ID $policyId from $endpoint: ${e.message}")
+                RrvLog.w(TAG, "Failed to fetch policy by ID: policyId=$policyId, error=${e.message}")
                 val devId = app.mqttManager.getEffectiveDeviceId().ifBlank { repository.deviceId }
                 if (devId.isNotBlank()) {
                     fetchAndApplyPolicy(devId, currentHash, callback)
@@ -380,7 +373,7 @@ class MdmApiClient(private val context: Context) {
 
             override fun onResponse(call: Call, response: Response) {
                 if (!response.isSuccessful) {
-                    RrvLog.w(TAG, "⚠️ [POLICY-FETCH-FALLBACK] Fetch by ID returned HTTP ${response.code}. Falling back to device policy endpoint...")
+                    RrvLog.w(TAG, "Policy fetch by ID returned status: HTTP ${response.code}. Falling back to device policy endpoint")
                     response.close()
                     val devId = app.mqttManager.getEffectiveDeviceId().ifBlank { repository.deviceId }
                     if (devId.isNotBlank()) {
@@ -405,7 +398,7 @@ class MdmApiClient(private val context: Context) {
         currentHash: String? = null,
         callback: ((Boolean) -> Unit)? = null
     ) {
-        val targetDeviceId = deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId().ifBlank { repository.deviceId } }
+        val targetDeviceId = app.mqttManager.getEffectiveDeviceId().ifBlank { deviceId.ifBlank { repository.deviceId } }
         if (targetDeviceId.isBlank()) {
             callback?.invoke(false)
             return
@@ -430,13 +423,13 @@ class MdmApiClient(private val context: Context) {
         }
 
         val request = reqBuilder.build()
-        RrvLog.net("📤 [POLICY-FETCH-REQUEST] Requesting policy for device '$deviceId' from $endpoint (If-None-Match: $currentHash)...")
+        RrvLog.net("Requesting policy for device: deviceId=$deviceId, endpoint=$endpoint")
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                RrvLog.w(TAG, "⚠️ [POLICY-FETCH-ERROR] Failed to fetch policy from $endpoint: ${e.message}")
+                RrvLog.w(TAG, "Failed to fetch policy from $endpoint: ${e.message}")
                 if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
-                    RrvLog.i(TAG, "Attempting ADB reverse loopback policy fetch from http://127.0.0.1:8080...")
+                    RrvLog.i(TAG, "Attempting ADB reverse loopback policy fetch from http://127.0.0.1:8080")
                     val fallbackReq = request.newBuilder().url("http://127.0.0.1:8080/api/v1/policies/device/$deviceId").build()
                     httpClient.newCall(fallbackReq).enqueue(object : Callback {
                         override fun onFailure(call: Call, e: IOException) {
@@ -462,34 +455,37 @@ class MdmApiClient(private val context: Context) {
             val code = response.code
             val etag = response.header("ETag")
             if (code == 304) {
-                RrvLog.net("📥 [POLICY-RESPONSE] HTTP 304 Not Modified (ETag: $etag) from $sourceEndpoint — Device policy is already up to date.")
+                RrvLog.net("Policy not modified (304): sourceEndpoint=$sourceEndpoint, etag=$etag")
                 callback?.invoke(true)
                 return
             }
             val body = response.body?.string() ?: ""
-            RrvLog.json("REST-NETWORK", "📥 [POLICY-RESPONSE] HTTP $code (ETag: $etag) from $sourceEndpoint | Size: ${body.length} bytes", body)
+            RrvLog.json("REST-NETWORK", "Policy Response status=$code, etag=$etag", body)
 
             if (!response.isSuccessful) {
-                RrvLog.w(TAG, "⚠️ [POLICY-RESPONSE] Server returned non-success HTTP $code for policy fetch: $body")
+                RrvLog.w(TAG, "Server returned non-success status $code for policy fetch")
                 callback?.invoke(false)
                 return
             }
 
-            val policyDto = gson.fromJson(body, Map::class.java)
-            val payloadJson = policyDto["payloadJson"]?.toString()
-            if (!payloadJson.isNullOrBlank() && payloadJson != "{}") {
-                val parsedPolicy = com.rrv.mdm.dpc.data.model.PolicyPayload.fromJson(payloadJson)
-                repository.saveActivePolicy(parsedPolicy)
-                val app = context.applicationContext as? com.rrv.mdm.dpc.RrvMdmApplication
-                app?.deviceManager?.applyPolicy(parsedPolicy, force = true)
-                RrvLog.net("🛡️ [POLICY-APPLIED] Successfully enforced policy profile '${parsedPolicy.name}' (Version: ${parsedPolicy.version}) | Applications: ${parsedPolicy.applications.size}, Kiosk Packages: ${parsedPolicy.allowedKioskPackages.size}, KioskEnabled: ${parsedPolicy.kioskModeEnabled}")
-                callback?.invoke(true)
-            } else {
-                RrvLog.d(TAG, "Policy response had empty payloadJson: $body")
-                callback?.invoke(true)
+            val policyDto = try { gson.fromJson(body, Map::class.java) } catch (_: Exception) { null }
+            val rawPayload = policyDto?.get("payloadJson") ?: policyDto?.get("payload")
+            val jsonToParse = when (rawPayload) {
+                is String -> if (rawPayload.isNotBlank() && rawPayload != "{}") rawPayload else body
+                is Map<*, *> -> gson.toJson(rawPayload)
+                else -> body
             }
+
+            val parsedPolicy = com.rrv.mdm.dpc.data.model.PolicyPayload.fromJson(jsonToParse)
+            repository.saveActivePolicy(parsedPolicy)
+            val app = context.applicationContext as? com.rrv.mdm.dpc.RrvMdmApplication
+            app?.deviceManager?.applyPolicy(parsedPolicy, force = true)
+            com.rrv.mdm.dpc.util.NotificationHelper.showPolicyNotification(context, parsedPolicy)
+            context.sendBroadcast(android.content.Intent("com.rrv.mdm.ACTION_POLICY_UPDATED").setPackage(context.packageName))
+            RrvLog.i(TAG, "Policy applied: policyName='${parsedPolicy.name}', version=${parsedPolicy.version}, allowedApps=${parsedPolicy.allowedKioskPackages.size}, kioskEnabled=${parsedPolicy.kioskModeEnabled}")
+            callback?.invoke(true)
         } catch (e: Exception) {
-            RrvLog.e(TAG, "✕ [POLICY-ERROR] Error parsing and applying fetched policy data: ${e.message}", e)
+            RrvLog.e(TAG, "Error parsing and applying fetched policy data: ${e.message}", e)
             callback?.invoke(false)
         } finally {
             response.close()

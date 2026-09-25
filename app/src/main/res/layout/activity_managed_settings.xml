@@ -43,7 +43,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="⚡ MDM Command Activity &amp; Logs"
+                android:text="MDM Command Activity &amp; Logs"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -73,7 +73,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="🛡️ Device Health &amp; Security Status"
+                android:text="Device Health &amp; Security Status"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -103,7 +103,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="ℹ️ About RRV MDM Client"
+                android:text="About RRV MDM Client"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
                 android:textStyle="bold" />
@@ -133,7 +133,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="🔑 IT Administrator Diagnostic Bypass"
+                android:text="IT Administrator Diagnostic Bypass"
                 android:textColor="#CBD5E1"
                 android:textSize="13sp" />
 
