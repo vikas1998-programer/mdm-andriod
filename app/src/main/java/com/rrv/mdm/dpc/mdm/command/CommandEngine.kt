@@ -93,6 +93,8 @@ class ResetPasscodeExecutor : CommandExecutor {
 
 class InstallApplicationExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
+        val app = context.applicationContext as RrvMdmApplication
+        val pm = context.packageManager
         val gson = Gson()
         val map = try { gson.fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
         val packageName = map?.get("packageName")?.toString() ?: ""
@@ -108,7 +110,21 @@ class InstallApplicationExecutor : CommandExecutor {
             return ExecutionResult(false, "Missing packageName or appId in payload.")
         }
 
-        // Lightweight REST endpoint fallback if downloadUrl wasn't explicitly populated
+        // 1. Check if this is a pre-installed system app (e.g. Camera, Chrome, Dialer)
+        val appInfo = if (packageName.isNotBlank()) try { pm.getApplicationInfo(packageName, 0) } catch (_: Exception) { null } else null
+        val isSystemApp = appInfo != null && ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0)
+        val isPreinstalledMode = downloadUrl.isBlank() && appId.isBlank() || downloadUrl.contains("PREINSTALLED", ignoreCase = true) || (isSystemApp && downloadUrl.isBlank())
+
+        if (isPreinstalledMode && packageName.isNotBlank()) {
+            val enabled = app.deviceManager.enableSystemApp(packageName)
+            return if (enabled) {
+                ExecutionResult(true, "Pre-installed app $packageName enabled and made visible on device.")
+            } else {
+                ExecutionResult(false, "Failed to enable pre-installed app $packageName.")
+            }
+        }
+
+        // 2. External Uploaded APK: Lightweight REST endpoint fallback if downloadUrl wasn't explicitly populated
         if (downloadUrl.isBlank() && appId.isNotBlank()) {
             downloadUrl = "/api/v1/apps/$appId/download"
         }
@@ -132,15 +148,41 @@ class InstallApplicationExecutor : CommandExecutor {
 
 class UninstallApplicationExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
+        val app = context.applicationContext as RrvMdmApplication
+        val pm = context.packageManager
         val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
         val packageName = map?.get("packageName")?.toString() ?: ""
         if (packageName.isBlank()) return ExecutionResult(false, "Missing packageName in UNINSTALL_APP payload.")
-        val app = context.applicationContext as RrvMdmApplication
+
+        // Guard MDM Core package against accidental removal
+        if (packageName == context.packageName || packageName.startsWith("com.rrv.mdm")) {
+            return ExecutionResult(false, "MDM Core package cannot be uninstalled.")
+        }
+
+        val appInfo = try { pm.getApplicationInfo(packageName, 0) } catch (_: Exception) { null }
+        if (appInfo == null) {
+            return ExecutionResult(true, "Package $packageName is already not installed.")
+        }
+
+        val isSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+        val isUpdatedSystem = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+
+        if (isSystem && !isUpdatedSystem) {
+            // Pre-installed System application: Disable and hide cleanly at DPM level
+            val disabled = app.deviceManager.disableSystemApp(packageName)
+            return if (disabled) {
+                ExecutionResult(true, "Pre-installed app $packageName successfully disabled and hidden.")
+            } else {
+                ExecutionResult(false, "Failed to disable pre-installed app $packageName.")
+            }
+        }
+
+        // Regular APK / Enterprise Upload: Silently uninstall via PackageInstaller
         val initiated = app.policyManager.silentUninstall(packageName)
         return if (initiated) {
             ExecutionResult(true, "Uninstall initiated for $packageName.")
         } else {
-            ExecutionResult(false, "APPLICATION_NOT_UNINSTALLABLE: Package $packageName cannot be uninstalled (System package, MDM core, or DPM restriction).")
+            ExecutionResult(false, "Failed to initiate uninstallation for $packageName.")
         }
     }
 }
@@ -148,24 +190,30 @@ class UninstallApplicationExecutor : CommandExecutor {
 class PolicyUpdateExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
-        val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
-        val rawPayloadJson = map?.get("payloadJson")?.toString()
+        val rawCandidate = command.payloadJson?.trim() ?: ""
+        val map = try { Gson().fromJson(rawCandidate, Map::class.java) } catch (_: Exception) { null }
+        val nestedPayload = map?.get("payloadJson")?.toString()
+        val rawPayloadJson = if (!nestedPayload.isNullOrBlank() && nestedPayload != "{}") nestedPayload else rawCandidate
 
         // 1. If inline payload contains full policy structure, enforce immediately
-        if (!rawPayloadJson.isNullOrBlank() && rawPayloadJson != "{}" && (rawPayloadJson.contains("name") || rawPayloadJson.contains("passcode") || rawPayloadJson.contains("network") || rawPayloadJson.contains("applications") || rawPayloadJson.contains("hardware"))) {
-            val parsed = PolicyPayload.fromJson(rawPayloadJson)
-            app.repository.saveActivePolicy(parsed)
-            app.deviceManager.applyPolicy(parsed, force = true)
-            NotificationHelper.showPolicyNotification(context, parsed)
-            context.sendBroadcast(Intent("com.rrv.mdm.ACTION_POLICY_UPDATED").setPackage(context.packageName))
-            return ExecutionResult(true, "Policy profile '${parsed.name}' enforced successfully.")
+        if (rawPayloadJson.isNotBlank() && rawPayloadJson != "{}" && (rawPayloadJson.contains("name") || rawPayloadJson.contains("passcode") || rawPayloadJson.contains("network") || rawPayloadJson.contains("applications") || rawPayloadJson.contains("hardware") || rawPayloadJson.contains("restrictions") || rawPayloadJson.contains("volume"))) {
+            try {
+                val parsed = PolicyPayload.fromJson(rawPayloadJson)
+                app.repository.saveActivePolicy(parsed)
+                app.deviceManager.applyPolicy(parsed, force = true)
+                NotificationHelper.showPolicyNotification(context, parsed)
+                context.sendBroadcast(Intent("com.rrv.mdm.ACTION_POLICY_UPDATED").setPackage(context.packageName))
+                return ExecutionResult(true, "Policy profile '${parsed.name}' enforced successfully in real-time.")
+            } catch (e: Exception) {
+                RrvLog.w("PolicyUpdateExecutor", "Inline policy parsing failed: ${e.message}, falling back to REST fetch.")
+            }
         }
 
         // 2. Trigger Signal via MQTT -> Fetch canonical policy payload from REST API
         val deviceId = app.mqttManager.getEffectiveDeviceId().ifBlank { app.repository.deviceId }
         val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
-        RrvLog.i("PolicyUpdateExecutor", "Fetching latest policy for device '$deviceId'...")
-        app.apiClient.fetchAndApplyPolicy(deviceId, currentHash = null) { success ->
+        RrvLog.i("PolicyUpdateExecutor", "Fetching latest policy for device '$deviceId' (force=true)...")
+        app.apiClient.fetchAndApplyPolicy(deviceId, currentHash = null, force = true) { success ->
             deferred.complete(success)
         }
 
@@ -185,11 +233,13 @@ class MessageExecutor : CommandExecutor {
     override suspend fun execute(command: MdmCommand, context: Context): ExecutionResult {
         val app = context.applicationContext as RrvMdmApplication
         val map = try { Gson().fromJson(command.payloadJson, Map::class.java) } catch (_: Exception) { null }
-        val title = map?.get("title")?.toString() ?: "Admin Message"
-        val message = map?.get("message")?.toString() ?: "Message from IT Administrator"
+        val title = map?.get("title")?.toString()?.takeIf { it.isNotBlank() } ?: "Admin Message"
+        val message = map?.get("message")?.toString()
+            ?: map?.get("body")?.toString()
+            ?: "Message from IT Administrator"
         val priorityStr = map?.get("priority")?.toString() ?: "INFO"
-        val priority = try { MessagePriority.valueOf(priorityStr) } catch (_: Exception) { MessagePriority.INFO }
-        val sender = map?.get("sender")?.toString() ?: "RRV Administrator"
+        val priority = try { MessagePriority.valueOf(priorityStr.uppercase()) } catch (_: Exception) { MessagePriority.INFO }
+        val sender = map?.get("sender")?.toString()?.takeIf { it.isNotBlank() } ?: "RRV Administrator"
 
         val adminMsg = AdminMessage(
             id = command.commandId,
@@ -394,6 +444,13 @@ class SetVolumeExecutor : CommandExecutor {
         // 4. Apply Hardware Volume Buttons Restriction (DISALLOW_ADJUST_VOLUME)
         if (lockAdjust != null) {
             app.deviceManager.setVolumeAdjustDisabled(lockAdjust)
+        } else if (muted != true && app.deviceManager.isDeviceOwner()) {
+            try {
+                app.deviceManager.devicePolicyManager.clearUserRestriction(
+                    app.deviceManager.adminComponent,
+                    android.os.UserManager.DISALLOW_ADJUST_VOLUME
+                )
+            } catch (_: Exception) {}
         }
 
         // 5. Update cached active policy so watchdog preserves this state
@@ -529,6 +586,8 @@ class CommandProcessor(
         "SEND_MESSAGE" to MessageExecutor(),
         "BROADCAST_MESSAGE" to MessageExecutor(),
         "SHOW_MESSAGE" to MessageExecutor(),
+        "PUSH_MESSAGE" to MessageExecutor(),
+        "MESSAGE" to MessageExecutor(),
         "ENABLE_WIFI" to WifiExecutor(),
         "DISABLE_WIFI" to WifiExecutor(),
         "CLEAR_APP_DATA" to ClearAppDataExecutor(),
@@ -550,10 +609,13 @@ class CommandProcessor(
         "VOLUME" to SetVolumeExecutor(),
         "SET_AUDIO_VOLUME" to SetVolumeExecutor(),
         "TRIGGER_ALARM" to TriggerAlarmExecutor(),
+        "TRIGGER_SIREN" to TriggerAlarmExecutor(),
         "SOUND_ALARM" to TriggerAlarmExecutor(),
         "RING_ALARM" to TriggerAlarmExecutor(),
         "RING_SIREN" to TriggerAlarmExecutor(),
         "ALARM" to TriggerAlarmExecutor(),
+        "SIREN" to TriggerAlarmExecutor(),
+        "RING" to TriggerAlarmExecutor(),
         "SET_SCREEN_TIMEOUT" to SetScreenTimeoutExecutor(),
         "SET_TIMEOUT" to SetScreenTimeoutExecutor(),
         "SCREEN_TIMEOUT" to SetScreenTimeoutExecutor(),

@@ -1,8 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Kubernesis Zero-Trust Enterprise DPC Theme -->
     <style name="Theme.RrvMdmDpc" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">@color/cyan_glow</item>
-        <item name="colorSecondary">@color/blue_primary</item>
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorOnPrimary">@color/text_main</item>
+        <item name="colorPrimaryContainer">@color/brand_crimson_bg</item>
+        <item name="colorSecondary">@color/cyan_primary</item>
+        <item name="colorOnSecondary">@color/text_main</item>
+        <item name="colorSecondaryContainer">@color/cyan_subtle_bg</item>
+        <item name="colorSurface">@color/bg_surface</item>
+        <item name="colorOnSurface">@color/text_main</item>
+        <item name="android:colorBackground">@color/bg_space</item>
         <item name="android:windowBackground">@color/bg_space</item>
         <item name="android:statusBarColor">@color/bg_space</item>
         <item name="android:navigationBarColor">@color/bg_space</item>
@@ -11,5 +19,6 @@
     <style name="Theme.RrvMdmDpc.Kiosk" parent="Theme.RrvMdmDpc">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@drawable/bg_kiosk_gradient</item>
     </style>
 </resources>

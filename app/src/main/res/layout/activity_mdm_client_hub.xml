@@ -45,7 +45,7 @@
                     android:id="@+id/tvHubBrandTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="RRV MDM | Workspace"
+                    android:text="Kubernetes Securities | Workspace"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp"
                     android:fontFamily="sans-serif-black" />
@@ -300,7 +300,7 @@
                                 android:id="@+id/tvDashboardOrgName"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="RRV Enterprise Global"
+                                android:text="Kubernetes Securities Global"
                                 android:textColor="#FFFFFF"
                                 android:textSize="15sp"
                                 android:fontFamily="sans-serif-bold" />

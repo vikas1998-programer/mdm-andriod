@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -52,6 +53,8 @@ class MdmPersistentService : Service() {
     private var watchdogJob: Job? = null
     private var heartbeatJob: Job? = null
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
+    private var volumeReceiver: android.content.BroadcastReceiver? = null
+    private var volumeObserver: android.database.ContentObserver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -72,7 +75,8 @@ class MdmPersistentService : Service() {
         }
         val app = application as RrvMdmApplication
         registerNetworkCallback(app)
-        Log.i(TAG, "RRV MDM Persistent Service started — agent is protected from kill.")
+        startVolumeWatcher(app)
+        Log.i(TAG, "Kubernetes Securities Persistent Service started — agent and volume governance active.")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -167,18 +171,17 @@ class MdmPersistentService : Service() {
                         app.mqttManager.connect()
                         if (devId.isNotBlank()) {
                             app.mqttManager.fetchPendingCommandsFromServer()
-                            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
+                            app.apiClient.fetchAndApplyPolicy(devId, force = true) { ok ->
                                 Log.d(TAG, "[15-Min REST Fallback] Policy sync result: $ok")
                             }
                         }
                     } else {
-                        Log.d(TAG, "[Watchdog] MQTT is active and connected.")
+                        Log.d(TAG, "[Watchdog] MQTT is active and connected — skipping REST polling.")
                     }
 
-                    if (app.policyManager.isDeviceOwner() && (app.repository.isEnrolled || app.repository.deviceId.isNotBlank())) {
+                    if (app.deviceManager.isDeviceOwner() && (app.repository.isEnrolled || app.repository.deviceId.isNotBlank())) {
                         val policy = app.repository.getActivePolicy()
-                        Log.d(TAG, "Watchdog: Reapplying policy [${policy.name}] to hardware controls...")
-                        app.policyManager.applyPolicy(policy)
+                        Log.d(TAG, "Watchdog: Active policy verified [${policy.name}] (Version: ${policy.version}).")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Watchdog error: ${e.message}")
@@ -189,10 +192,91 @@ class MdmPersistentService : Service() {
         Log.i(TAG, "Policy watchdog active — 15-minute fallback poll and periodic enforcement.")
     }
 
+    private fun startVolumeWatcher(app: RrvMdmApplication) {
+        if (volumeReceiver == null) {
+            val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                        val streamType = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1)
+                        val policy = app.repository.getActivePolicy()
+                        if (!policy.masterVolumeMuted) {
+                            if (streamType != -1) {
+                                val targetPercent = when (streamType) {
+                                    android.media.AudioManager.STREAM_MUSIC -> policy.mediaVolumePercent
+                                    android.media.AudioManager.STREAM_ALARM -> policy.alarmVolumePercent
+                                    android.media.AudioManager.STREAM_RING -> policy.ringVolumePercent
+                                    else -> null
+                                }
+                                if (targetPercent != null) {
+                                    app.deviceManager.scheduleVolumeAutoRevert(streamType, targetPercent, 1500L)
+                                }
+                            } else {
+                                policy.mediaVolumePercent?.let { app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_MUSIC, it, 1500L) }
+                                policy.alarmVolumePercent?.let { app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_ALARM, it, 1500L) }
+                                policy.ringVolumePercent?.let { app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_RING, it, 1500L) }
+                            }
+                        }
+                    }
+                }
+            }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    registerReceiver(receiver, filter)
+                }
+                volumeReceiver = receiver
+                Log.i(TAG, "System-wide volume change BroadcastReceiver registered.")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not register volume BroadcastReceiver: ${e.message}")
+            }
+        }
+
+        if (volumeObserver == null) {
+            val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    super.onChange(selfChange)
+                    val policy = app.repository.getActivePolicy()
+                    if (!policy.masterVolumeMuted) {
+                        policy.mediaVolumePercent?.let { target ->
+                            app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_MUSIC, target, 1500L)
+                        }
+                        policy.alarmVolumePercent?.let { target ->
+                            app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_ALARM, target, 1500L)
+                        }
+                        policy.ringVolumePercent?.let { target ->
+                            app.deviceManager.scheduleVolumeAutoRevert(android.media.AudioManager.STREAM_RING, target, 1500L)
+                        }
+                    }
+                }
+            }
+            try {
+                contentResolver.registerContentObserver(android.provider.Settings.System.CONTENT_URI, true, observer)
+                volumeObserver = observer
+                Log.i(TAG, "System-wide volume ContentObserver registered.")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not register volume ContentObserver: ${e.message}")
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         watchdogJob?.cancel()
         heartbeatJob?.cancel()
+        try {
+            volumeReceiver?.let {
+                unregisterReceiver(it)
+                volumeReceiver = null
+            }
+        } catch (_: Exception) {}
+        try {
+            volumeObserver?.let {
+                contentResolver.unregisterContentObserver(it)
+                volumeObserver = null
+            }
+        } catch (_: Exception) {}
         try {
             networkCallback?.let {
                 val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
@@ -208,10 +292,10 @@ class MdmPersistentService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                CHANNEL_NAME,
+                "Kubernetes Securities Device Management",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "RRV MDM is actively managing this device."
+                description = "Kubernetes Securities is actively managing and protecting this device."
                 setShowBadge(false)
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -226,9 +310,9 @@ class MdmPersistentService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("RRV MDM — Device Managed")
-            .setContentText("This device is under IT management by RRV Software Pvt Ltd.")
-            .setSmallIcon(R.drawable.ic_mdm_launcher)
+            .setContentTitle("Kubernetes Securities — Device Managed")
+            .setContentText("This device is protected by Kubernetes Securities Zero-Trust MDM.")
+            .setSmallIcon(R.drawable.ic_kubernetes_security_logo)
             .setOngoing(true)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)

@@ -369,7 +369,7 @@ class MdmApiClient(private val context: Context) {
                 RrvLog.w(TAG, "Failed to fetch policy by ID: policyId=$policyId, error=${e.message}")
                 val devId = app.mqttManager.getEffectiveDeviceId().ifBlank { repository.deviceId }
                 if (devId.isNotBlank()) {
-                    fetchAndApplyPolicy(devId, currentHash, callback)
+                    fetchAndApplyPolicy(devId, currentHash = currentHash, force = true, callback = callback)
                 } else {
                     callback?.invoke(false)
                 }
@@ -381,27 +381,40 @@ class MdmApiClient(private val context: Context) {
                     response.close()
                     val devId = app.mqttManager.getEffectiveDeviceId().ifBlank { repository.deviceId }
                     if (devId.isNotBlank()) {
-                        fetchAndApplyPolicy(devId, currentHash, callback)
+                        fetchAndApplyPolicy(devId, currentHash = currentHash, force = true, callback = callback)
                     } else {
                         callback?.invoke(false)
                     }
                     return
                 }
-                handlePolicyResponse(response, endpoint, callback)
+                handlePolicyResponse(response, endpoint, force = true, callback = callback)
             }
         })
     }
+
+    private var lastPolicyFetchTimestamp: Long = 0L
+    private val MIN_POLICY_FETCH_INTERVAL_MS: Long = 60_000L
 
     /**
      * Canonical Policy Fetch & Application Pipeline by Device ID.
      * Hits dedicated GET /api/v1/policies/device/{deviceId} endpoint with ETag If-None-Match support.
      * Used on enrollment, boot, reconnect, and OTA sync.
+     * Throttled to prevent tight loop hammering unless force=true.
      */
+    @JvmOverloads
     fun fetchAndApplyPolicy(
         deviceId: String,
         currentHash: String? = null,
+        force: Boolean = false,
         callback: ((Boolean) -> Unit)? = null
     ) {
+        val now = System.currentTimeMillis()
+        if (!force && (now - lastPolicyFetchTimestamp < MIN_POLICY_FETCH_INTERVAL_MS)) {
+            RrvLog.d(TAG, "Skipping redundant policy fetch — rate limit cooldown active (${(now - lastPolicyFetchTimestamp) / 1000}s ago).")
+            callback?.invoke(true)
+            return
+        }
+
         val targetDeviceId = app.mqttManager.getEffectiveDeviceId().ifBlank { deviceId.ifBlank { repository.deviceId } }
         if (targetDeviceId.isBlank()) {
             callback?.invoke(false)
@@ -412,6 +425,7 @@ class MdmApiClient(private val context: Context) {
             callback?.invoke(false)
             return
         }
+        lastPolicyFetchTimestamp = now
         val jwt = repository.deviceJwt
         val endpoint = "$serverUrl/api/v1/policies/device/$targetDeviceId"
 
@@ -427,7 +441,7 @@ class MdmApiClient(private val context: Context) {
         }
 
         val request = reqBuilder.build()
-        RrvLog.net("Requesting policy for device: deviceId=$deviceId, endpoint=$endpoint")
+        RrvLog.net("Requesting policy for device: deviceId=$deviceId, endpoint=$endpoint (force=$force)")
 
         httpClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -440,7 +454,7 @@ class MdmApiClient(private val context: Context) {
                             callback?.invoke(false)
                         }
                         override fun onResponse(call: Call, response: Response) {
-                            handlePolicyResponse(response, "http://127.0.0.1:8080/api/v1/policies/device/$deviceId", callback)
+                            handlePolicyResponse(response, "http://127.0.0.1:8080/api/v1/policies/device/$deviceId", force, callback)
                         }
                     })
                     return
@@ -449,12 +463,12 @@ class MdmApiClient(private val context: Context) {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                handlePolicyResponse(response, endpoint, callback)
+                handlePolicyResponse(response, endpoint, force, callback)
             }
         })
     }
 
-    private fun handlePolicyResponse(response: Response, sourceEndpoint: String, callback: ((Boolean) -> Unit)?) {
+    private fun handlePolicyResponse(response: Response, sourceEndpoint: String, force: Boolean = false, callback: ((Boolean) -> Unit)? = null) {
         try {
             val code = response.code
             val etag = response.header("ETag")
@@ -481,12 +495,28 @@ class MdmApiClient(private val context: Context) {
             }
 
             val parsedPolicy = com.rrv.mdm.dpc.data.model.PolicyPayload.fromJson(jsonToParse)
-            repository.saveActivePolicy(parsedPolicy)
-            val app = context.applicationContext as? com.rrv.mdm.dpc.RrvMdmApplication
-            app?.deviceManager?.applyPolicy(parsedPolicy, force = true)
-            com.rrv.mdm.dpc.util.NotificationHelper.showPolicyNotification(context, parsedPolicy)
-            context.sendBroadcast(android.content.Intent("com.rrv.mdm.ACTION_POLICY_UPDATED").setPackage(context.packageName))
-            RrvLog.i(TAG, "Policy applied: policyName='${parsedPolicy.name}', version=${parsedPolicy.version}, allowedApps=${parsedPolicy.allowedKioskPackages.size}, kioskEnabled=${parsedPolicy.kioskModeEnabled}")
+            val topLevelVersion = (policyDto?.get("version") as? Number)?.toInt() ?: parsedPolicy.version
+            val topLevelId = policyDto?.get("id")?.toString() ?: (policyDto?.get("policyId")?.toString() ?: parsedPolicy.policyId)
+            val topLevelName = policyDto?.get("name")?.toString() ?: parsedPolicy.name
+
+            val finalParsedPolicy = parsedPolicy.copy(
+                policyId = topLevelId,
+                version = topLevelVersion,
+                name = if (topLevelName.isNotBlank()) topLevelName else parsedPolicy.name
+            )
+            val currentPolicy = repository.getActivePolicy()
+            val isChanged = force || currentPolicy.policyId != finalParsedPolicy.policyId || currentPolicy.version != finalParsedPolicy.version || currentPolicy != finalParsedPolicy
+
+            repository.saveActivePolicy(finalParsedPolicy)
+            if (isChanged) {
+                val app = context.applicationContext as? com.rrv.mdm.dpc.RrvMdmApplication
+                app?.deviceManager?.applyPolicy(finalParsedPolicy, force = true)
+                com.rrv.mdm.dpc.util.NotificationHelper.showPolicyNotification(context, finalParsedPolicy)
+                context.sendBroadcast(android.content.Intent("com.rrv.mdm.ACTION_POLICY_UPDATED").setPackage(context.packageName))
+                RrvLog.i(TAG, "Policy applied: policyName='${finalParsedPolicy.name}', version=${finalParsedPolicy.version}, allowedApps=${finalParsedPolicy.allowedKioskPackages.size}, kioskEnabled=${finalParsedPolicy.kioskModeEnabled}")
+            } else {
+                RrvLog.d(TAG, "Policy is unchanged (version=${finalParsedPolicy.version}) — skipping re-enforcement.")
+            }
             callback?.invoke(true)
         } catch (e: Exception) {
             RrvLog.e(TAG, "Error parsing and applying fetched policy data: ${e.message}", e)

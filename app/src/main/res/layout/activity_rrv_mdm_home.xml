@@ -21,39 +21,17 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.65">
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="90dp"
-                android:layout_height="90dp"
-                android:src="@drawable/ic_rrv_watermark"
-                android:contentDescription="RRV Watermark" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="x"
-                android:textColor="#FFFFFF"
-                android:textSize="22sp"
-                android:layout_marginStart="14dp"
-                android:layout_marginEnd="14dp" />
-
-            <ImageView
-                android:layout_width="90dp"
-                android:layout_height="90dp"
-                android:src="@drawable/ic_iskcon_logo"
-                android:contentDescription="ISKCON Watermark" />
-        </LinearLayout>
+        <ImageView
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:src="@drawable/ic_kubernetes_security_logo"
+            android:contentDescription="Kubernetes Securities Logo" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="RRV ZERO-TRUST MDM // ISKCON"
+            android:text="KUBERNETES SECURITIES // ZERO-TRUST"
             android:textColor="#FFFFFF"
             android:textSize="15sp"
             android:letterSpacing="0.15"
@@ -84,37 +62,19 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginEnd="12dp"
-            android:paddingStart="6dp"
-            android:paddingEnd="6dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="4dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             android:background="@drawable/bg_status_pill">
 
-            <!-- RRV Shield Brand Mark -->
-            <ImageView
-                android:layout_width="26dp"
-                android:layout_height="26dp"
-                android:src="@drawable/ic_shield_check"
-                app:tint="#3B82F6"
-                android:contentDescription="RRV MDM" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="x"
-                android:textColor="#64748B"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp" />
-
-            <!-- ISKCON Brand Icon -->
+            <!-- Kubernetes Securities Brand Icon -->
             <ImageView
                 android:id="@+id/ivBrandLogo"
-                android:layout_width="26dp"
-                android:layout_height="26dp"
-                android:src="@drawable/ic_iskcon_logo"
-                android:contentDescription="ISKCON" />
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/ic_kubernetes_security_logo"
+                android:contentDescription="Kubernetes Securities" />
         </LinearLayout>
 
         <LinearLayout
@@ -127,7 +87,7 @@
                 android:id="@+id/tvHeaderTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="RRV MDM Enterprise"
+                android:text="Kubernetes Securities"
                 android:textColor="#FFFFFF"
                 android:textSize="17sp"
                 android:textStyle="bold" />
@@ -136,7 +96,7 @@
                 android:id="@+id/tvHeaderSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Powered for ISKCON Fleet • Zero-Trust"
+                android:text="Zero-Trust Enterprise Fleet Defense"
                 android:textColor="#94A3B8"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -389,7 +349,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="RRV MDM"
+            android:text="KUBERNETES SECURITIES"
             android:textColor="#38BDF8"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -409,7 +369,7 @@
             android:id="@+id/tvCommandCardSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="RRV Secure Browser"
+            android:text="Secure Enterprise Browser"
             android:textColor="#94A3B8"
             android:textSize="12sp" />
 
@@ -546,5 +506,97 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ======================================================== -->
+    <!-- Volume & Brightness HUD Popup Overlay                     -->
+    <!-- ======================================================== -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardVolumeHud"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="28dp"
+        android:layout_marginEnd="28dp"
+        android:layout_marginTop="50dp"
+        android:visibility="gone"
+        tools:visibility="visible"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="24dp"
+        app:cardBackgroundColor="#F00F172A"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@drawable/bg_volume_hud">
+
+            <!-- Header Row: Icon + Title + Percent -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:id="@+id/ivHudIcon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:src="@drawable/ic_volume_up"
+                    android:contentDescription="HUD Icon" />
+
+                <TextView
+                    android:id="@+id/tvHudTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:text="Media Volume"
+                    android:textColor="#F8FAFC"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvHudPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="90%"
+                    android:textColor="#38BDF8"
+                    android:textSize="18sp"
+                    android:fontFamily="monospace"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Progress Bar -->
+            <ProgressBar
+                android:id="@+id/pbHudLevel"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="10dp"
+                android:layout_marginTop="12dp"
+                android:max="100"
+                android:progress="90"
+                android:progressDrawable="@drawable/bg_progress_bar_custom" />
+
+            <!-- Subtitle / Policy Status Badge -->
+            <TextView
+                android:id="@+id/tvHudPolicyStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_gravity="center_horizontal"
+                android:background="@drawable/bg_status_pill"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:text="🔒 Policy Target: 90% (Auto-reverting)"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -67,6 +67,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     private val connectLock = Any()
     private var onConnectJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var hasPublishedInitialInventory = false
     @Volatile private var isConnecting = false
     @Volatile private var lastConnectAttempt = 0L
 
@@ -175,7 +176,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                     override fun onSuccess(asyncActionToken: IMqttToken?) {
                         isConnecting = false
                         RrvLog.i(TAG, "MQTT connection established: serverUri=$serverUri")
-                        onConnectedSuccessfully()
                     }
 
                     override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
@@ -193,63 +193,72 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     private fun onConnectedSuccessfully() {
         onConnectJob?.cancel()
         onConnectJob = CoroutineScope(Dispatchers.IO).launch {
-            delay(300L) // Ensure Paho internal client state transition completes
+            delay(500L) // Ensure Paho internal client state transition completes
             if (!isConnected()) return@launch
             val effectiveId = getEffectiveDeviceId()
             val imei = getHardwareImei()
             val serial = getHardwareSerial()
             val androidId = getAndroidId()
-            val repoDevId = repository.deviceId.takeIf { it.isNotBlank() }
+            val serverAssignedId = repository.getServerAssignedDeviceId().takeIf { it.isNotBlank() }
 
-            // 1. Subscribe to Device Command Topics
+            // 1. Subscribe to Device Command Topics across all alias identifiers
             val topicsToSubscribe = linkedSetOf<String>()
-            topicsToSubscribe.add("rrv/devices/$effectiveId/commands")
-            if (!imei.isNullOrBlank() && imei != effectiveId) {
+            val storedDeviceId = repository.deviceId.takeIf { it.isNotBlank() }
+            if (!storedDeviceId.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$storedDeviceId/commands")
+            }
+            if (!serverAssignedId.isNullOrBlank()) {
+                topicsToSubscribe.add("rrv/devices/$serverAssignedId/commands")
+            }
+            if (effectiveId.isNotBlank()) {
+                topicsToSubscribe.add("rrv/devices/$effectiveId/commands")
+            }
+            if (!imei.isNullOrBlank()) {
                 topicsToSubscribe.add("rrv/devices/$imei/commands")
             }
-            if (!serial.isNullOrBlank() && serial != effectiveId) {
+            if (!serial.isNullOrBlank()) {
                 topicsToSubscribe.add("rrv/devices/$serial/commands")
             }
-            if (!repoDevId.isNullOrBlank() && repoDevId != effectiveId) {
-                topicsToSubscribe.add("rrv/devices/$repoDevId/commands")
-            }
-            if (!androidId.isNullOrBlank() && androidId != effectiveId) {
+            if (!androidId.isNullOrBlank()) {
                 topicsToSubscribe.add("rrv/devices/$androidId/commands")
             }
             topicsToSubscribe.add("rrv/devices/all/commands")
+            topicsToSubscribe.add("rrv/policies/broadcast/commands")
 
             for (topic in topicsToSubscribe) {
+                if (!isConnected()) break
                 subscribe(topic, QOS_COMMANDS)
             }
 
             // 2. Publish Online Status (Retained) across primary and alias topics
             val onlinePayload = """{"status":"ONLINE","osVersion":"${Build.VERSION.RELEASE}","imei":${imei?.let { "\"$it\"" } ?: "null"},"serial":${serial?.let { "\"$it\"" } ?: "null"},"timestamp":${System.currentTimeMillis()}}"""
             publish("rrv/devices/$effectiveId/status", onlinePayload, 1, true)
+            if (!serverAssignedId.isNullOrBlank() && serverAssignedId != effectiveId) {
+                publish("rrv/devices/$serverAssignedId/status", onlinePayload, 1, true)
+            }
             if (!imei.isNullOrBlank() && imei != effectiveId) {
                 publish("rrv/devices/$imei/status", onlinePayload, 1, true)
             }
             if (!serial.isNullOrBlank() && serial != effectiveId) {
                 publish("rrv/devices/$serial/status", onlinePayload, 1, true)
             }
-            if (!repoDevId.isNullOrBlank() && repoDevId != effectiveId) {
-                publish("rrv/devices/$repoDevId/status", onlinePayload, 1, true)
-            }
 
-            // 3. Publish Immediate Heartbeat & Application Inventory
+            // 3. Publish Immediate Heartbeat
             publishTelemetry(null, true)
-            publishAppInventory()
             startHeartbeatLoop()
+
+            if (!hasPublishedInitialInventory) {
+                hasPublishedInitialInventory = true
+                CoroutineScope(Dispatchers.IO).launch {
+                    delay(3000L)
+                    if (isConnected()) {
+                        publishAppInventory()
+                    }
+                }
+            }
 
             // 4. Fetch any pending commands missed while offline
             fetchPendingCommandsFromServer()
-
-            // 5. Fetch and enforce latest policy profile upon connection / reconnection
-            if (effectiveId.isNotBlank()) {
-                RrvLog.i(TAG, "Initiating policy fetch on MQTT connect: deviceId=$effectiveId")
-                app?.apiClient?.fetchAndApplyPolicy(effectiveId) { success ->
-                    RrvLog.i(TAG, "Policy sync completed: deviceId=$effectiveId, success=$success")
-                }
-            }
         }
     }
 
@@ -259,66 +268,73 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
      * Part of the MQTT Signal + REST Payload Fetch architecture.
      */
     fun fetchPendingCommandsFromServer() {
-        val deviceId = getEffectiveDeviceId()
-        if (deviceId.isBlank()) return
+        val serverAssignedId = repository.getServerAssignedDeviceId().takeIf { it.isNotBlank() }
+        val effectiveId = getEffectiveDeviceId()
+        val idsToFetch = linkedSetOf<String>()
+        if (!serverAssignedId.isNullOrBlank()) idsToFetch.add(serverAssignedId)
+        if (effectiveId.isNotBlank()) idsToFetch.add(effectiveId)
+        if (idsToFetch.isEmpty()) return
 
         val serverUrl = (configProvider?.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
         val jwt = repository.deviceJwt
-        val endpoint = "$serverUrl/api/v1/commands/device/$deviceId/pending"
 
-        RrvLog.d(TAG, "Requesting pending commands from $endpoint")
-        val request = okhttp3.Request.Builder()
-            .url(endpoint)
-            .get()
-            .apply { if (jwt.isNotBlank()) header("Authorization", "Bearer $jwt") }
-            .build()
+        for (deviceId in idsToFetch) {
+            val endpoint = "$serverUrl/api/v1/commands/device/$deviceId/pending"
 
-        httpClient.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                RrvLog.w(TAG, "Could not fetch pending commands from $endpoint: ${e.message}")
-                if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
-                    RrvLog.i(TAG, "Attempting ADB reverse loopback commands fetch from http://127.0.0.1:8080")
-                    val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/commands/$deviceId/pending"
-                    val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
-                    httpClient.newCall(fallbackReq).enqueue(object : okhttp3.Callback {
-                        override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                            RrvLog.w(TAG, "Fallback pending commands failed: ${e.message}")
-                        }
-                        override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                            val respBody = response.body?.string() ?: "[]"
-                            if (!response.isSuccessful) return
-                            try {
-                                val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
-                                val pendingCmds: List<MqttCommandPayload> = gson.fromJson(respBody, type) ?: emptyList()
-                                if (pendingCmds.isNotEmpty()) {
-                                    RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server fallback")
-                                    pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
-                                }
-                            } catch (e: Exception) {
-                                RrvLog.e(TAG, "Failed to parse fallback pending commands", e)
+            RrvLog.d(TAG, "Requesting pending commands from $endpoint")
+            val request = okhttp3.Request.Builder()
+                .url(endpoint)
+                .get()
+                .apply { if (jwt.isNotBlank()) header("Authorization", "Bearer $jwt") }
+                .build()
+
+            httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    RrvLog.w(TAG, "Could not fetch pending commands from $endpoint: ${e.message}")
+                    if (e is java.net.UnknownHostException && !serverUrl.contains("127.0.0.1") && !serverUrl.contains("localhost")) {
+                        RrvLog.i(TAG, "Attempting ADB reverse loopback commands fetch from http://127.0.0.1:8080")
+                        val fallbackEndpoint = "http://127.0.0.1:8080/api/v1/commands/$deviceId/pending"
+                        val fallbackReq = request.newBuilder().url(fallbackEndpoint).build()
+                        httpClient.newCall(fallbackReq).enqueue(object : okhttp3.Callback {
+                            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                                RrvLog.w(TAG, "Fallback pending commands failed: ${e.message}")
                             }
-                        }
-                    })
-                }
-            }
-
-            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
-                val body = response.body?.string() ?: "[]"
-                if (!response.isSuccessful) return
-                try {
-                    val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
-                    val pendingCmds: List<MqttCommandPayload> = gson.fromJson(body, type) ?: emptyList()
-                    if (pendingCmds.isNotEmpty()) {
-                        RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server")
-                        pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
-                    } else {
-                        RrvLog.d(TAG, "No pending commands found on server.")
+                            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                                val respBody = response.body?.string() ?: "[]"
+                                if (!response.isSuccessful) return
+                                try {
+                                    val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
+                                    val pendingCmds: List<MqttCommandPayload> = gson.fromJson(respBody, type) ?: emptyList()
+                                    if (pendingCmds.isNotEmpty()) {
+                                        RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server fallback")
+                                        pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
+                                    }
+                                } catch (e: Exception) {
+                                    RrvLog.e(TAG, "Failed to parse fallback pending commands", e)
+                                }
+                            }
+                        })
                     }
-                } catch (e: Exception) {
-                    RrvLog.e(TAG, "Failed to parse pending commands response", e)
                 }
-            }
-        })
+
+                override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                    val body = response.body?.string() ?: "[]"
+                    if (!response.isSuccessful) return
+                    try {
+                        val type = object : com.google.gson.reflect.TypeToken<List<MqttCommandPayload>>() {}.type
+                        val pendingCmds: List<MqttCommandPayload> = gson.fromJson(body, type) ?: emptyList()
+                        if (pendingCmds.isNotEmpty()) {
+                            RrvLog.i(TAG, "Executing ${pendingCmds.size} pending commands from server ($deviceId)")
+                            pendingCmds.forEach { cmd -> handleInboundCommand(cmd) }
+                        } else {
+                            RrvLog.d(TAG, "No pending commands found on server for $deviceId.")
+                        }
+                    } catch (e: Exception) {
+                        RrvLog.e(TAG, "Failed to parse pending commands response", e)
+                    }
+                }
+            })
+        }
     }
 
     private fun startHeartbeatLoop() {

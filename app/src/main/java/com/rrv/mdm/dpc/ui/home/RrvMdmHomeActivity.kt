@@ -45,26 +45,7 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         })
 
         val app = application as com.rrv.mdm.dpc.RrvMdmApplication
-        if (app.deviceManager.isDeviceOwner()) {
-            val activePolicy = app.repository.getActivePolicy()
-            app.deviceManager.applyPolicy(activePolicy)
-        }
         applyScreenOrientation()
-
-        // Fetch latest policy profile asynchronously from server upon launching home
-        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
-        if (devId.isNotBlank()) {
-            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
-                if (ok) {
-                    runOnUiThread {
-                        applyScreenOrientation()
-                        viewModel.refreshDeviceStatus()
-                        setupAppGrid()
-                    }
-                }
-            }
-        }
-
         registerPolicyUpdateReceiver()
 
         // 2. Setup Responsive App Grid
@@ -370,62 +351,145 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        when (keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                handleVolumeKeyPress(isVolumeUp = true)
+                return true
+            }
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                handleVolumeKeyPress(isVolumeUp = false)
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    private var hudDismissRunnable: Runnable? = null
+    private val hudHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun showVolumeHud(
+        currentPercent: Int,
+        targetPercent: Int?,
+        isMuted: Boolean = false,
+        isReverted: Boolean = false
+    ) {
+        val card = findViewById<androidx.cardview.widget.CardView>(R.id.cardVolumeHud) ?: return
+        val ivIcon = findViewById<android.widget.ImageView>(R.id.ivHudIcon)
+        val tvTitle = findViewById<android.widget.TextView>(R.id.tvHudTitle)
+        val tvPercent = findViewById<android.widget.TextView>(R.id.tvHudPercent)
+        val pbLevel = findViewById<android.widget.ProgressBar>(R.id.pbHudLevel)
+        val tvStatus = findViewById<android.widget.TextView>(R.id.tvHudPolicyStatus)
+
+        hudDismissRunnable?.let { hudHandler.removeCallbacks(it) }
+
+        tvTitle?.text = "Media Volume"
+        tvPercent?.text = "$currentPercent%"
+        pbLevel?.progress = currentPercent
+
+        if (isMuted) {
+            ivIcon?.setImageResource(R.drawable.ic_volume_mute)
+            tvStatus?.text = "🔇 Muted by IT Administrator (0%)"
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#EF4444"))
+        } else if (isReverted && targetPercent != null) {
+            ivIcon?.setImageResource(R.drawable.ic_volume_up)
+            tvStatus?.text = "✓ Restored to $targetPercent% by Policy"
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#10B981"))
+        } else if (targetPercent != null) {
+            ivIcon?.setImageResource(R.drawable.ic_volume_up)
+            tvStatus?.text = "🔒 Policy Target: $targetPercent% (Auto-reverting in 2s)"
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+        } else {
+            ivIcon?.setImageResource(R.drawable.ic_volume_up)
+            tvStatus?.text = "✓ User Control Permitted"
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+        }
+
+        if (card.visibility != android.view.View.VISIBLE) {
+            card.alpha = 0f
+            card.visibility = android.view.View.VISIBLE
+            card.animate().alpha(1f).setDuration(180).start()
+        }
+
+        hudDismissRunnable = Runnable {
+            card.animate()
+                .alpha(0f)
+                .setDuration(250)
+                .withEndAction { card.visibility = android.view.View.GONE }
+                .start()
+        }
+        hudHandler.postDelayed(hudDismissRunnable!!, 2200L)
+    }
+
+    fun showBrightnessHud(percent: Int) {
+        val card = findViewById<androidx.cardview.widget.CardView>(R.id.cardVolumeHud) ?: return
+        val ivIcon = findViewById<android.widget.ImageView>(R.id.ivHudIcon)
+        val tvTitle = findViewById<android.widget.TextView>(R.id.tvHudTitle)
+        val tvPercent = findViewById<android.widget.TextView>(R.id.tvHudPercent)
+        val pbLevel = findViewById<android.widget.ProgressBar>(R.id.pbHudLevel)
+        val tvStatus = findViewById<android.widget.TextView>(R.id.tvHudPolicyStatus)
+
+        hudDismissRunnable?.let { hudHandler.removeCallbacks(it) }
+
+        tvTitle?.text = "Display Brightness"
+        tvPercent?.text = "$percent%"
+        pbLevel?.progress = percent
+        ivIcon?.setImageResource(R.drawable.ic_weather_sun)
+        tvStatus?.text = "🔒 Managed Display Brightness"
+        tvStatus?.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+
+        if (card.visibility != android.view.View.VISIBLE) {
+            card.alpha = 0f
+            card.visibility = android.view.View.VISIBLE
+            card.animate().alpha(1f).setDuration(180).start()
+        }
+
+        hudDismissRunnable = Runnable {
+            card.animate()
+                .alpha(0f)
+                .setDuration(250)
+                .withEndAction { card.visibility = android.view.View.GONE }
+                .start()
+        }
+        hudHandler.postDelayed(hudDismissRunnable!!, 2200L)
+    }
+
     private fun handleVolumeKeyPress(isVolumeUp: Boolean) {
         val app = application as com.rrv.mdm.dpc.RrvMdmApplication
-        val userManager = getSystemService(android.content.Context.USER_SERVICE) as? android.os.UserManager
         val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
         val policy = app.repository.getActivePolicy()
 
-        val isLocked = policy.volumeAdjustDisabled ||
-                (userManager?.hasUserRestriction(android.os.UserManager.DISALLOW_ADJUST_VOLUME) == true)
-        val isMuted = policy.masterVolumeMuted
-
-        val currentVol = audioManager?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0
-        val maxVol = audioManager?.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC) ?: 15
-        val minVol = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            try { audioManager?.getStreamMinVolume(android.media.AudioManager.STREAM_MUSIC) ?: 0 } catch (_: Exception) { 0 }
-        } else 0
-
-        val currentPercent = if (maxVol > minVol) {
-            (((currentVol - minVol).toDouble() / (maxVol - minVol).toDouble()) * 100).toInt().coerceIn(0, 100)
-        } else 0
-
-        lastVolumeToast?.cancel()
-
-        if (isMuted) {
-            val msg = "Volume Muted by IT Administrator (0%)\nHardware buttons restricted by Policy."
-            lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
-            lastVolumeToast?.show()
+        if (policy.masterVolumeMuted) {
+            showVolumeHud(currentPercent = 0, targetPercent = 0, isMuted = true)
             com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "Hardware volume press rejected: Master volume is muted by IT admin.")
             return
         }
 
-        if (isLocked) {
-            val keyName = if (isVolumeUp) "Volume Up (+)" else "Volume Down (-)"
-            val msg = "Volume Adjustment Restricted by IT Admin\nLevel locked at $currentPercent% ($keyName blocked by Policy)"
-            lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
-            lastVolumeToast?.show()
-            com.rrv.mdm.dpc.util.RrvLog.w("VolumeControl", "Hardware $keyName press rejected: DISALLOW_ADJUST_VOLUME restriction active.")
-            return
-        }
-
-        // When Unlocked: Adjust stream volume smoothly
+        // Allow immediate interactive volume adjustment with visual HUD and audio feedback
         val direction = if (isVolumeUp) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER
         audioManager?.adjustStreamVolume(
             android.media.AudioManager.STREAM_MUSIC,
             direction,
             android.media.AudioManager.FLAG_SHOW_UI or android.media.AudioManager.FLAG_PLAY_SOUND
         )
-        val newVol = audioManager?.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) ?: currentVol
-        val newPercent = if (maxVol > minVol) {
-            (((newVol - minVol).toDouble() / (maxVol - minVol).toDouble()) * 100).toInt().coerceIn(0, 100)
-        } else 0
+        val newPercent = app.deviceManager.getStreamVolumePercent(android.media.AudioManager.STREAM_MUSIC)
+        val targetPercent = policy.mediaVolumePercent
 
-        val keyName = if (isVolumeUp) "▲ Volume Raised" else "▼ Volume Lowered"
-        val msg = "$keyName: $newPercent% [User Control Allowed]"
-        lastVolumeToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT)
-        lastVolumeToast?.show()
-        com.rrv.mdm.dpc.util.RrvLog.d("VolumeControl", "Hardware volume button pressed: Media volume adjusted to $newPercent%")
+        showVolumeHud(currentPercent = newPercent, targetPercent = targetPercent, isMuted = false)
+
+        if (targetPercent != null) {
+            com.rrv.mdm.dpc.util.RrvLog.d("VolumeControl", "Hardware volume pressed: Media volume $newPercent%. Auto-revert scheduled to $targetPercent%.")
+
+            app.deviceManager.scheduleVolumeAutoRevert(
+                android.media.AudioManager.STREAM_MUSIC,
+                targetPercent,
+                1500L
+            ) { restoredLevel ->
+                runOnUiThread {
+                    showVolumeHud(currentPercent = restoredLevel, targetPercent = targetPercent, isReverted = true)
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -435,20 +499,10 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         applyScreenOrientation()
         val app = application as com.rrv.mdm.dpc.RrvMdmApplication
         viewModel.refreshDeviceStatus()
-
-        val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
-        if (devId.isNotBlank()) {
-            app.apiClient.fetchAndApplyPolicy(devId) { ok ->
-                if (ok) {
-                    runOnUiThread {
-                        viewModel.refreshDeviceStatus()
-                        setupAppGrid()
-                    }
-                }
-            }
-        }
+        setupAppGrid()
 
         if (app.deviceManager.isDeviceOwner()) {
+            app.deviceManager.ensureResetPasswordTokenSet()
             val activePolicy = app.repository.getActivePolicy()
             if (activePolicy.kioskModeEnabled) {
                 app.lockTaskController.startKioskLock(this)

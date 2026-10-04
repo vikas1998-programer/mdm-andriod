@@ -1,5 +1,7 @@
 package com.rrv.mdm.dpc.domain.usecase
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.rrv.mdm.dpc.domain.model.*
@@ -35,7 +37,18 @@ class ProcessCommandUseCase(private val commandProcessor: CommandProcessor) {
 class LaunchAppUseCase(private val context: Context) {
     operator fun invoke(packageName: String): Boolean {
         return try {
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            var launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null) {
+                // If the app is a system app in ROM, attempt enabling & unhiding via Device Policy Manager
+                try {
+                    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+                    val admin = ComponentName(context, "com.rrv.mdm.dpc.mdm.receiver.MdmDeviceAdminReceiver")
+                    dpm?.enableSystemApp(admin, packageName)
+                    dpm?.setApplicationHidden(admin, packageName, false)
+                    dpm?.setPackagesSuspended(admin, arrayOf(packageName), false)
+                } catch (_: Exception) {}
+                launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            }
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(launchIntent)

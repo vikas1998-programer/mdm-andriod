@@ -182,9 +182,13 @@ class KioskLauncherActivity : AppCompatActivity() {
                 }
             }
         } else {
-            // Dedicated Kiosk Mode: Only load explicitly authorized packages
-            if (policy.allowedKioskPackages.isNotEmpty()) {
-                for (pkg in policy.allowedKioskPackages) {
+            // Dedicated Kiosk Mode: Load allowed kiosk packages + any policy apps configured as VISIBLE/MANDATORY
+            val authorizedPackages = (policy.allowedKioskPackages + policy.applications
+                .filter { it.installType.uppercase() in listOf("VISIBLE", "ALLOWED", "MANDATORY_SILENT", "PREINSTALLED", "AVAILABLE") }
+                .map { it.packageName }).toSet()
+
+            if (authorizedPackages.isNotEmpty()) {
+                for (pkg in authorizedPackages) {
                     try {
                         val appInfo = pm.getApplicationInfo(pkg, 0)
                         val label = pm.getApplicationLabel(appInfo).toString()

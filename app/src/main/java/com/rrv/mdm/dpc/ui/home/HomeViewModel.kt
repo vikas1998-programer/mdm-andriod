@@ -1,6 +1,8 @@
 package com.rrv.mdm.dpc.ui.home
 
 import android.app.Application
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rrv.mdm.dpc.RrvMdmApplication
@@ -85,11 +87,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private fun seedDefaultEnterpriseAppsIfEmpty() {
         viewModelScope.launch {
             val pm = app.packageManager
+            val dpm = app.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+            val admin = ComponentName(app, "com.rrv.mdm.dpc.mdm.receiver.MdmDeviceAdminReceiver")
             val activePolicy = app.repository.getActivePolicy()
             val policyApps = activePolicy.applications.filter { it.installType.uppercase() in listOf("SHOW", "VISIBLE", "INSTALL", "FORCE_INSTALLED", "AVAILABLE", "ALLOWED", "REQUIRED", "MANAGED", "MANDATORY", "MANDATORY_SILENT", "MANAGED_SILENT", "SILENT", "OPTIONAL", "AUTO_INSTALL") }
 
             val appsToSeed = if (policyApps.isNotEmpty()) {
                 policyApps.map { appPolicy ->
+                    // Attempt enabling if it's a pre-installed system app
+                    try {
+                        dpm?.enableSystemApp(admin, appPolicy.packageName)
+                        dpm?.setApplicationHidden(admin, appPolicy.packageName, false)
+                    } catch (_: Exception) {}
+
                     val isInstalled = try { pm.getPackageInfo(appPolicy.packageName, 0); true } catch (_: Exception) { false }
                     val label = if (appPolicy.title.isNotBlank() && appPolicy.title != appPolicy.packageName) {
                         appPolicy.title

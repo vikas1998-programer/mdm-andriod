@@ -126,6 +126,8 @@ class MdmRepository(private val context: Context) {
         get() = prefs.getInt("KEY_MQTT_PORT", 0).takeIf { it > 0 } ?: com.rrv.mdm.dpc.data.config.MdmGlobalConfig.MQTT_PORT
         set(value) = prefs.edit().putInt("KEY_MQTT_PORT", value).apply()
 
+    fun getServerAssignedDeviceId(): String = prefs.getString("KEY_DEVICE_ID", "") ?: ""
+
     var deviceId: String
         get() = getEffectiveDeviceId()
         set(value) = prefs.edit().putString("KEY_DEVICE_ID", value).apply()

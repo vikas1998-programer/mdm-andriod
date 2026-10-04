@@ -63,7 +63,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Compliant with RRV Corporate Security Policy"
+                    android:text="Compliant with Kubernetes Securities Policy"
                     android:textColor="#CBD5E1"
                     android:textSize="13sp" />
 
@@ -170,7 +170,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="24dp"
                 android:backgroundTint="#2563EB"
-                android:text="Synchronize with RRV MDM"
+                android:text="Synchronize with Kubernetes Securities"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold" />
         </LinearLayout>

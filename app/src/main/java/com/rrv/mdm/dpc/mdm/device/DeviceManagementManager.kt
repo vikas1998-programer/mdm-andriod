@@ -24,6 +24,8 @@ import com.rrv.mdm.dpc.ui.home.RrvMdmHomeActivity
 import com.rrv.mdm.dpc.util.RrvLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @SuppressLint("MissingPermission")
@@ -104,6 +106,9 @@ class DeviceManagementManager(private val context: Context) {
     val admin: ComponentName get() = adminComponent
     val devicePolicyManager: DevicePolicyManager get() = dpm
 
+    private var volumeRevertJob: Job? = null
+    private val isRevertingVolume = java.util.concurrent.atomic.AtomicBoolean(false)
+
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
     fun isAdminActive(): Boolean = dpm.isAdminActive(adminComponent)
 
@@ -159,8 +164,9 @@ class DeviceManagementManager(private val context: Context) {
         if (!isAdminActive()) return
         try {
             if (isDeviceOwner()) {
-                // 0. Auto-grant all runtime permissions to MDM DPC
+                // 0. Auto-grant all runtime permissions to MDM DPC and initialize password reset token
                 grantDpcRuntimePermissions()
+                ensureResetPasswordTokenSet()
 
                 // 1. Prevent uninstalling or clearing MDM
                 try {
@@ -227,6 +233,27 @@ class DeviceManagementManager(private val context: Context) {
     }
 
     /**
+     * Initializes the DevicePolicyManager cryptographic 32-byte reset password token.
+     */
+    fun ensureResetPasswordTokenSet(): Boolean {
+        if (!isDeviceOwner() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return try {
+            val token = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("kubernetes_securities_mdm_enterprise_reset_token".toByteArray())
+            if (!dpm.isResetPasswordTokenActive(adminComponent)) {
+                val set = dpm.setResetPasswordToken(adminComponent, token)
+                RrvLog.i(TAG, "Reset password token initialized: $set")
+                set
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "Could not initialize reset password token: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Reset device PIN / Passcode with default password support and immediate change requirement.
      */
     fun resetPassword(newPin: String, requireImmediateChange: Boolean = true): Boolean {
@@ -234,12 +261,24 @@ class DeviceManagementManager(private val context: Context) {
         return try {
             val flags = if (requireImmediateChange) DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY else 0
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val token = "rrv_mdm_reset_token".toByteArray()
-                dpm.setResetPasswordToken(adminComponent, token)
-                dpm.resetPasswordWithToken(adminComponent, newPin, token, flags)
+                val token = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest("kubernetes_securities_mdm_enterprise_reset_token".toByteArray())
+                try {
+                    if (!dpm.isResetPasswordTokenActive(adminComponent)) {
+                        dpm.setResetPasswordToken(adminComponent, token)
+                    }
+                } catch (te: Exception) {
+                    RrvLog.w(TAG, "setResetPasswordToken attempt: ${te.message}")
+                }
+                val success = dpm.resetPasswordWithToken(adminComponent, newPin, token, flags)
+                if (!success) {
+                    RrvLog.w(TAG, "dpm.resetPasswordWithToken returned false.")
+                    return false
+                }
             } else {
                 @Suppress("DEPRECATION")
-                dpm.resetPassword(newPin, flags)
+                val success = dpm.resetPassword(newPin, flags)
+                if (!success) return false
             }
 
             if (requireImmediateChange) {
@@ -252,7 +291,7 @@ class DeviceManagementManager(private val context: Context) {
                     RrvLog.w(TAG, "Could not set immediate password expiration: ${e.message}")
                 }
             }
-            RrvLog.i(TAG, "Device password reset to default PIN (requireImmediateChange=$requireImmediateChange).")
+            RrvLog.i(TAG, "Device password reset to PIN successfully (requireImmediateChange=$requireImmediateChange).")
             true
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to reset passcode", e)
@@ -538,13 +577,15 @@ class DeviceManagementManager(private val context: Context) {
                         setStreamVolumePercent(android.media.AudioManager.STREAM_NOTIFICATION, it)
                         setStreamVolumePercent(android.media.AudioManager.STREAM_SYSTEM, it)
                     }
+                    // Clear DISALLOW_ADJUST_VOLUME to allow interactive user feedback while auto-revert snaps back to policy level
+                    if (isDeviceOwner()) {
+                        try { dpm.clearUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
+                    }
                 } else {
                     setMasterVolumeMuted(true)
-                }
-                val volumeLocked = policy.volumeAdjustDisabled || policy.masterVolumeMuted
-                setVolumeAdjustDisabled(volumeLocked)
-                if (!policy.masterVolumeMuted) {
-                    setMasterVolumeMuted(false)
+                    if (isDeviceOwner()) {
+                        try { dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
+                    }
                 }
 
                 // 7. Ensure Home Launcher is registered
@@ -584,6 +625,14 @@ class DeviceManagementManager(private val context: Context) {
                 // Whitelist must strictly exclude explicitly hidden and blocked apps
                 val whitelisted = (explicitlyAllowed + allowedKiosk).filterNot { explicitlyHidden.contains(it) || explicitlyBlocked.contains(it) }.toMutableSet()
                 val isGovernanceActive = whitelisted.isNotEmpty() || explicitlyHidden.isNotEmpty() || explicitlyBlocked.isNotEmpty()
+
+                // Pre-enable all whitelisted system packages (e.g. Chrome, Camera, Phone) so Android ROM makes them available
+                for (pkg in whitelisted) {
+                    try {
+                        dpm.enableSystemApp(adminComponent, pkg)
+                        dpm.setApplicationHidden(adminComponent, pkg, false)
+                    } catch (_: Exception) {}
+                }
 
                 // Handle explicit uninstallation / removal requests
                 for (pkg in explicitlyUninstalled) {
@@ -1220,7 +1269,7 @@ class DeviceManagementManager(private val context: Context) {
     /**
      * Set stream volume level by percentage (0..100%).
      */
-    fun setStreamVolumePercent(streamType: Int, percent: Int) {
+    fun setStreamVolumePercent(streamType: Int, percent: Int, showUi: Boolean = false) {
         try {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return
             val wasLocked = if (isDeviceOwner()) {
@@ -1254,8 +1303,9 @@ class DeviceManagementManager(private val context: Context) {
                     try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
                 } else 0
                 val target = Math.round(minVol + ((percent.coerceIn(0, 100).toDouble() / 100.0) * (maxVol - minVol))).toInt().coerceIn(minVol, maxVol)
-                audioManager.setStreamVolume(streamType, target, 0)
-                RrvLog.i(TAG, "Audio stream $streamType volume set to $percent% (level $target/$maxVol)")
+                val flags = if (showUi) android.media.AudioManager.FLAG_SHOW_UI else 0
+                audioManager.setStreamVolume(streamType, target, flags)
+                RrvLog.i(TAG, "Audio stream $streamType volume set to $percent% (level $target/$maxVol, showUi=$showUi)")
             } finally {
                 if (wasLocked && isDeviceOwner()) {
                     try { dpm.addUserRestriction(adminComponent, UserManager.DISALLOW_ADJUST_VOLUME) } catch (_: Exception) {}
@@ -1263,6 +1313,58 @@ class DeviceManagementManager(private val context: Context) {
             }
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to set audio stream $streamType volume to $percent%", e)
+        }
+    }
+
+    /**
+     * Get current audio stream volume percentage (0..100%).
+     */
+    fun getStreamVolumePercent(streamType: Int = android.media.AudioManager.STREAM_MUSIC): Int {
+        return try {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return 0
+            val maxVol = audioManager.getStreamMaxVolume(streamType)
+            val minVol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try { audioManager.getStreamMinVolume(streamType) } catch (_: Exception) { 0 }
+            } else 0
+            val curVol = audioManager.getStreamVolume(streamType)
+            if (maxVol > minVol) {
+                (((curVol - minVol).toDouble() / (maxVol - minVol).toDouble()) * 100).toInt().coerceIn(0, 100)
+            } else 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    /**
+     * Automatically debounces user volume changes and snaps volume back to the policy-configured target level.
+     */
+    fun scheduleVolumeAutoRevert(
+        streamType: Int = android.media.AudioManager.STREAM_MUSIC,
+        targetPercent: Int,
+        delayMs: Long = 1500L,
+        onReverted: ((Int) -> Unit)? = null
+    ) {
+        if (isRevertingVolume.get()) return
+        val curPct = getStreamVolumePercent(streamType)
+        if (curPct == targetPercent) return
+
+        volumeRevertJob?.cancel()
+        volumeRevertJob = CoroutineScope(Dispatchers.Main).launch {
+            delay(delayMs)
+            val latestPct = getStreamVolumePercent(streamType)
+            if (latestPct != targetPercent) {
+                try {
+                    isRevertingVolume.set(true)
+                    setStreamVolumePercent(streamType, targetPercent, showUi = true)
+                    RrvLog.i(TAG, "Volume Auto-Revert triggered: Stream $streamType restored to $targetPercent% (was $latestPct%).")
+                    onReverted?.invoke(targetPercent)
+                } catch (e: Exception) {
+                    RrvLog.w(TAG, "Volume Auto-Revert error: ${e.message}")
+                } finally {
+                    delay(400L)
+                    isRevertingVolume.set(false)
+                }
+            }
         }
     }
 
@@ -1469,6 +1571,34 @@ class DeviceManagementManager(private val context: Context) {
     }
 
     fun setStreamVolume(streamType: Int, percent: Int) = setStreamVolumePercent(streamType, percent)
+
+    fun enableSystemApp(packageName: String): Boolean {
+        if (!isDeviceOwner()) return false
+        return try {
+            dpm.enableSystemApp(adminComponent, packageName)
+            dpm.setApplicationHidden(adminComponent, packageName, false)
+            dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), false)
+            RrvLog.i(TAG, "Pre-installed system app $packageName enabled and unhidden.")
+            true
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to enable system app $packageName", e)
+            false
+        }
+    }
+
+    fun disableSystemApp(packageName: String): Boolean {
+        if (!isDeviceOwner()) return false
+        return try {
+            dpm.setApplicationHidden(adminComponent, packageName, true)
+            dpm.setPackagesSuspended(adminComponent, arrayOf(packageName), true)
+            (context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)?.killBackgroundProcesses(packageName)
+            RrvLog.i(TAG, "Pre-installed system app $packageName disabled and hidden.")
+            true
+        } catch (e: Exception) {
+            RrvLog.e(TAG, "Failed to disable system app $packageName", e)
+            false
+        }
+    }
 
     private fun setUserRestriction(key: String, enable: Boolean) {
         try {
