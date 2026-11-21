@@ -43,8 +43,12 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest ships a pre-installed Android SDK (ANDROID_HOME already set).
+      # android-actions/setup-android@v3 was tried first but its license-acceptance
+      # step (`sdkmanager --licenses`) failed outright on this runner image — using
+      # what's already installed avoids that third-party action entirely.
+      - name: Accept Android SDK licenses (pre-installed SDK)
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Lint
         run: ./gradlew lint
