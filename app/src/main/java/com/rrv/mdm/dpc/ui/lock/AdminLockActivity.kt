@@ -113,11 +113,9 @@ class AdminLockActivity : AppCompatActivity() {
 
         // Register unlock broadcast receiver
         val filter = IntentFilter("com.rrv.mdm.ACTION_DEVICE_UNLOCKED")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(unlockReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(unlockReceiver, filter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, unlockReceiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun showAdminUnlockPinDialog() {

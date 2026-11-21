@@ -54,7 +54,7 @@ class UnlockDeviceExecutor : CommandExecutor {
         val app = context.applicationContext as RrvMdmApplication
         app.deviceManager.unlockDevice()
         NotificationHelper.showCommandNotification(context, "Device Unlocked", "Remote unlock issued by IT Administrator.")
-        context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED"))
+        context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED").setPackage(context.packageName))
         return ExecutionResult(true, "Device unlocked and AdminLockActivity dismissed successfully.")
     }
 }
@@ -292,18 +292,29 @@ class LocationRequestExecutor : CommandExecutor {
         val app = context.applicationContext as RrvMdmApplication
         var loc: android.location.Location? = null
         try {
-            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
-            if (lm != null) {
-                val gps = try { lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) } catch (_: Exception) { null }
-                val net = try { lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) } catch (_: Exception) { null }
-                val pass = try { lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER) } catch (_: Exception) { null }
-                val fused = try {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                        lm.getLastKnownLocation(android.location.LocationManager.FUSED_PROVIDER)
-                    } else null
-                } catch (_: Exception) { null }
+            val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCoarseLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-                loc = listOfNotNull(gps, fused, net, pass).maxByOrNull { it.time }
+            if (hasFineLocation || hasCoarseLocation) {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+                if (lm != null) {
+                    val gps = try { lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER) } catch (_: SecurityException) { null }
+                    val net = try { lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER) } catch (_: SecurityException) { null }
+                    val pass = try { lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER) } catch (_: SecurityException) { null }
+                    val fused = try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            lm.getLastKnownLocation(android.location.LocationManager.FUSED_PROVIDER)
+                        } else null
+                    } catch (_: SecurityException) { null }
+
+                    loc = listOfNotNull(gps, fused, net, pass).maxByOrNull { it.time }
+                }
+            } else {
+                RrvLog.w("LocationRequestExecutor", "Location permission not granted — skipping location fetch.")
             }
         } catch (_: Exception) {}
 

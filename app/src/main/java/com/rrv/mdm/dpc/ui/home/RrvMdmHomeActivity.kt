@@ -124,11 +124,9 @@ class RrvMdmHomeActivity : AppCompatActivity() {
             }
         }
         val filter = android.content.IntentFilter("com.rrv.mdm.ACTION_POLICY_UPDATED")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(receiver, filter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         policyUpdateReceiver = receiver
     }
 
@@ -315,6 +313,29 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         if (!launched) {
             val isInstalled = try { packageManager.getPackageInfo(app.packageName, 0); true } catch (_: Exception) { false }
             if (!isInstalled) {
+                val appCtx = applicationContext as? RrvMdmApplication
+                val activePolicy = appCtx?.repository?.getActivePolicy()
+                val appPolicy = activePolicy?.applications?.find { it.packageName == app.packageName }
+                val targetDownloadUrl = appPolicy?.downloadUrl.takeIf { !it.isNullOrBlank() }
+                    ?: if (!appPolicy?.appId.isNullOrBlank()) "/api/v1/apps/${appPolicy?.appId}/download" else ""
+
+                if (!targetDownloadUrl.isNullOrBlank() && appPolicy != null) {
+                    Toast.makeText(this, "Downloading & installing ${app.appName}...", Toast.LENGTH_SHORT).show()
+                    val cmdId = "autoheal-tap-${app.packageName}-${System.currentTimeMillis()}"
+                    com.rrv.mdm.dpc.worker.ApkDownloadWorker.enqueue(
+                        this,
+                        cmdId,
+                        appPolicy.appId ?: "",
+                        app.packageName,
+                        app.appName,
+                        targetDownloadUrl,
+                        appPolicy.sha256 ?: "",
+                        appPolicy.versionCode,
+                        appPolicy.versionName,
+                        appPolicy.managedConfigJson ?: "{}"
+                    )
+                    return
+                }
                 Toast.makeText(this, "${app.appName} is not installed on this device.", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "${app.appName} is restricted by IT policy.", Toast.LENGTH_SHORT).show()

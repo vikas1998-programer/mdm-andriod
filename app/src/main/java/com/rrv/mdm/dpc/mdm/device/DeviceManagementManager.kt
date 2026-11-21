@@ -760,10 +760,11 @@ class DeviceManagementManager(private val context: Context) {
 
                 // 11. Auto-Download and Silently Install Mandatory/Force-Installed Apps via REST API
                 for (appPolicy in policy.applications) {
-                    val isAutoInstall = appPolicy.installType.uppercase() in listOf(
-                        "FORCE_INSTALLED", "MANDATORY_SILENT", "MANAGED_SILENT", "AUTO_INSTALL", "MANDATORY", "INSTALL", "REQUIRED"
+                    val hasDownloadSource = !appPolicy.downloadUrl.isNullOrBlank() || !appPolicy.appId.isNullOrBlank()
+                    val isProhibited = appPolicy.installType.uppercase() in listOf(
+                        "BLOCK", "BLOCKED", "RESTRICTED", "UNINSTALL", "REMOVED", "HIDE", "HIDDEN", "DISABLED"
                     )
-                    if (!isAutoInstall || appPolicy.packageName.isBlank() || appPolicy.packageName == context.packageName) continue
+                    if (isProhibited || appPolicy.packageName.isBlank() || appPolicy.packageName == context.packageName) continue
 
                     val isInstalledAndUpToDate = try {
                         val pInfo = pm.getPackageInfo(appPolicy.packageName, 0)
@@ -778,13 +779,13 @@ class DeviceManagementManager(private val context: Context) {
                         false
                     }
 
-                    if (!isInstalledAndUpToDate) {
+                    if (!isInstalledAndUpToDate && hasDownloadSource) {
                         val targetDownloadUrl = appPolicy.downloadUrl.takeIf { !it.isNullOrBlank() }
                             ?: if (!appPolicy.appId.isNullOrBlank()) "/api/v1/apps/${appPolicy.appId}/download" else ""
 
                         if (targetDownloadUrl.isNotBlank()) {
-                            RrvLog.i(TAG, "Auto-enqueuing silent installation for ${appPolicy.packageName} (v${appPolicy.versionCode}) from policy.")
-                            val cmdId = "policy-app-${appPolicy.packageName}-${appPolicy.versionCode}-${System.currentTimeMillis()}"
+                            RrvLog.i(TAG, "Auto-healing missing application: enqueuing silent install for ${appPolicy.packageName} (v${appPolicy.versionCode})")
+                            val cmdId = "autoheal-app-${appPolicy.packageName}-${appPolicy.versionCode}-${System.currentTimeMillis()}"
                             com.rrv.mdm.dpc.worker.ApkDownloadWorker.enqueue(
                                 context,
                                 cmdId,
@@ -1471,7 +1472,7 @@ class DeviceManagementManager(private val context: Context) {
             }
 
             // Send unlock broadcast so AdminLockActivity finishes immediately
-            context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED"))
+            context.sendBroadcast(Intent("com.rrv.mdm.ACTION_DEVICE_UNLOCKED").setPackage(context.packageName))
             RrvLog.i(TAG, "Device unlocked, AdminLockActivity dismissed, and lock screen info cleared.")
         } catch (e: Exception) {
             RrvLog.e(TAG, "Failed to unlock device", e)
