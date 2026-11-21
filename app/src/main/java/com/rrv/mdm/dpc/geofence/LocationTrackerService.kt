@@ -61,7 +61,9 @@ class LocationTrackerService : Service() {
                     handleNewLocation(loc)
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: SecurityException) {
+            RrvLog.e(TAG, "Location permission missing for initial fused location fetch", e)
+        }
 
         requestLocationUpdates()
     }
