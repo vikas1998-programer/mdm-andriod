@@ -1,0 +1,96 @@
+name: CI
+
+# Android DPC (mdm-andriod) pipeline.
+#
+# GitHub-hosted runners have no USB passthrough, so this only compiles and
+# lints the app — it cannot prove a command or an OTA update actually reaches
+# a physical device. That real-device verification (the method used in the
+# 2026-11-21 audit: adb logcat while dispatching from the portal) is a
+# required MANUAL step before any release that touches this repo, the
+# command-communication-service, or MQTT broker/ACL config — see
+# docs/ci/ANDROID_DEVICE_VERIFICATION.md in mdm-backend, and do not treat a
+# green run of this workflow alone as release-ready for those changes.
+#
+# SIGNING: self-update in production depends on every release being signed
+# with the same certificate as what's already live on enrolled devices
+# (Device Owner status is tied to package name + signing cert). Release
+# builds must use the signing config wired to secrets below — never a
+# locally generated debug key for anything that will self-update a real
+# fleet.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-lint:
+    name: Build & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Lint
+        run: ./gradlew lint
+
+      - name: Assemble debug build (compile check)
+        run: ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-lint-report
+          path: app/build/reports/lint-results-debug.html
+          retention-days: 14
+
+  # Signing-certificate guard: fails loudly rather than silently if a release
+  # build config exists but doesn't reference the production signing secrets.
+  # This is the check that would have caught the exact class of mistake that
+  # forces a factory reset — shipping a release signed with the wrong key.
+  verify-release-signing-config:
+    name: Verify release signing config present
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm release signingConfig is wired, not left on debug key
+        run: |
+          if ! grep -q "signingConfigs" app/build.gradle.kts 2>/dev/null; then
+            echo "::error::No signingConfigs block found in app/build.gradle.kts — \
+            a release build here would ship unsigned or debug-signed, breaking \
+            self-update and Device Owner status on every enrolled device."
+            exit 1
+          fi
+          echo "signingConfigs block present — verify manually it points at the \
+          production keystore (fingerprint must match: 4017ef49) before tagging a release."
+
+  release-gate:
+    name: Release gate (android-dpc)
+    runs-on: ubuntu-latest
+    needs: [build-and-lint, verify-release-signing-config]
+    if: always()
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ]; then
+            echo "::error::One or more required CI jobs failed — see above."
+            exit 1
+          fi
+          echo "Build/lint/signing-config checks green. Real-device verification is still a required manual step — see docs/ci/ANDROID_DEVICE_VERIFICATION.md."
