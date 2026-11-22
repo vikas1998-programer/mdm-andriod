@@ -39,7 +39,7 @@ class AppEventPublisher : BroadcastReceiver() {
                 addDataScheme("package")
             }
             context.registerReceiver(receiver, filter)
-            RrvLog.i(TAG, "✅ AppEventPublisher registered for package install/uninstall broadcasts")
+            RrvLog.i(TAG, "AppEventPublisher registered for package install/uninstall broadcasts")
             return receiver
         }
     }
@@ -55,7 +55,7 @@ class AppEventPublisher : BroadcastReceiver() {
             else -> return
         }
 
-        RrvLog.i(TAG, "📦 Package event: $event pkg=$packageName")
+        RrvLog.i(TAG, "Package event: $event pkg=$packageName")
 
         val app = context.applicationContext as? RrvMdmApplication ?: return
         val mqttManager = app.mqttManager
@@ -75,7 +75,7 @@ class AppEventPublisher : BroadcastReceiver() {
                     try {
                         dpm.setApplicationHidden(admin, packageName, true)
                         dpm.setPackagesSuspended(admin, arrayOf(packageName), true)
-                        RrvLog.w(TAG, "🚫 Newly installed package '$packageName' is NOT in approved server policy. Enforced DEFAULT DENY (Hidden & Suspended).")
+                        RrvLog.w(TAG, "Newly installed package '$packageName' is NOT in approved server policy. Enforced DEFAULT DENY (Hidden & Suspended).")
                     } catch (e: Exception) {
                         RrvLog.e(TAG, "Error applying default deny on $packageName", e)
                     }
@@ -132,6 +132,6 @@ class AppEventPublisher : BroadcastReceiver() {
         """.trimIndent()
 
         mqttManager.publishRaw(topic, payload, qos = 1, retained = false)
-        RrvLog.d(TAG, "✅ app_event published: $event $packageName v$versionName source=$installerSource")
+        RrvLog.d(TAG, "app_event published: $event $packageName v$versionName source=$installerSource")
     }
 }

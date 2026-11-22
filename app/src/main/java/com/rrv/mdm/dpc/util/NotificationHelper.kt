@@ -30,16 +30,16 @@ object NotificationHelper {
 
             val details = buildString {
                 append("Profile: ${policy.name}\n")
-                append("• Camera: ${if (policy.cameraDisabled) "Blocked ❌" else "Enabled ✅"}\n")
-                append("• Bluetooth: ${if (policy.bluetoothDisabled) "Blocked ❌" else "Enabled ✅"}\n")
-                append("• Screenshots: ${if (policy.screenCaptureDisabled) "Blocked ❌" else "Allowed ✅"}\n")
-                append("• Allowed Apps: ${policy.allowedKioskPackages.size} packages")
+                append("- Camera: ${if (policy.cameraDisabled) "Disabled" else "Enabled"}\n")
+                append("- Bluetooth: ${if (policy.bluetoothDisabled) "Disabled" else "Enabled"}\n")
+                append("- Screenshots: ${if (policy.screenCaptureDisabled) "Disabled" else "Allowed"}\n")
+                append("- Allowed Apps: ${policy.allowedKioskPackages.size} packages")
             }
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_lock)
-                .setContentTitle("🛡️ Policy Enforced: ${policy.name}")
-                .setContentText("Camera: ${if (policy.cameraDisabled) "Blocked" else "Allowed"} | Bluetooth: ${if (policy.bluetoothDisabled) "Blocked" else "Allowed"}")
+                .setContentTitle("Policy Enforced: ${policy.name}")
+                .setContentText("Camera: ${if (policy.cameraDisabled) "Disabled" else "Enabled"} | Bluetooth: ${if (policy.bluetoothDisabled) "Disabled" else "Enabled"}")
                 .setStyle(NotificationCompat.BigTextStyle().bigText(details))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
@@ -67,10 +67,22 @@ object NotificationHelper {
                 notificationManager.createNotificationChannel(channel)
             }
 
+            val intent = android.content.Intent(context, com.rrv.mdm.dpc.ui.messages.AdminMessagesActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            } else {
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(context, 0, intent, pendingFlags)
+
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setContentIntent(pendingIntent)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .build()

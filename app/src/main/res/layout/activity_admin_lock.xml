@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/layoutLockRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0F1D"
+    android:fitsSystemWindows="true">
+
+    <!-- Top Status Indicator -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:padding="20dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔒 ORGANIZATION SECURITY LOCK"
+            android:textColor="#EF4444"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-black"
+            android:letterSpacing="0.15" />
+    </LinearLayout>
+
+    <!-- Main Lock Content -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:layout_marginHorizontal="28dp"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- Shield Icon Box -->
+        <FrameLayout
+            android:id="@+id/iconContainer"
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:background="@drawable/bg_glass_card"
+            android:padding="16dp">
+
+            <ImageView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/ic_mdm_launcher"
+                android:contentDescription="Admin Lock" />
+        </FrameLayout>
+
+        <!-- Lock Title -->
+        <TextView
+            android:id="@+id/tvLockTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DEVICE LOCKED BY IT ADMINISTRATOR"
+            android:textColor="#FFFFFF"
+            android:textSize="19sp"
+            android:fontFamily="sans-serif-black"
+            android:textAlignment="center"
+            android:layout_marginTop="24dp" />
+
+        <!-- Subtitle Warning -->
+        <TextView
+            android:id="@+id/tvLockSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="This device is protected by Kubernesis Zero-Trust MDM. Standard user unlock has been restricted."
+            android:textColor="#94A3B8"
+            android:textSize="13sp"
+            android:lineSpacingExtra="3dp"
+            android:textAlignment="center"
+            android:layout_marginTop="10dp" />
+
+        <!-- Custom Admin Message Box -->
+        <LinearLayout
+            android:id="@+id/layoutMessageBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:layout_marginTop="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ADMINISTRATOR NOTICE"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif-bold"
+                android:letterSpacing="0.1" />
+
+            <TextView
+                android:id="@+id/tvAdminMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="This device is property of IT Administration. Please contact your system administrator to release device lock."
+                android:textColor="#E2E8F0"
+                android:textSize="13sp"
+                android:layout_marginTop="6dp" />
+        </LinearLayout>
+
+        <!-- Phone Call Button (if phone provided) -->
+        <Button
+            android:id="@+id/btnCallAdmin"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Call IT Support"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:fontFamily="sans-serif-bold"
+            android:backgroundTint="#0284C7"
+            android:layout_marginTop="16dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Bottom Action Footer: Secret Admin Unlock Dialog & Device Identifiers -->
+    <LinearLayout
+        android:id="@+id/layoutLockFooter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:padding="20dp"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvDeviceSerial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SERIAL: — • ORG: —"
+            android:textColor="#475569"
+            android:textSize="11sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/btnAdminUnlock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="[ IT Admin Unlock PIN ]"
+            android:textColor="#64748B"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-medium"
+            android:padding="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
+
+</RelativeLayout>

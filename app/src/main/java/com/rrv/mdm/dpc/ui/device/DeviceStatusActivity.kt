@@ -34,7 +34,7 @@ class DeviceStatusActivity : AppCompatActivity() {
                 binding.tvStorageStatus.text = "Storage: ${info.storageFreeGb} GB Free / ${info.storageTotalGb} GB Total"
 
                 val isDO = app.deviceManager.isDeviceOwner()
-                binding.tvDeviceOwnerStatus.text = if (isDO) "✓ Android Enterprise Device Owner: Active" else "⚠ Device Owner: Not provisioned"
+                binding.tvDeviceOwnerStatus.text = if (isDO) "Android Enterprise Device Owner: Active" else " Device Owner: Not provisioned"
             }
         }
 
@@ -43,7 +43,7 @@ class DeviceStatusActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 app.getDeviceStatusUseCase.refresh()
                 app.mqttManager.publishTelemetry(null, true)
-                Toast.makeText(this@DeviceStatusActivity, "✓ Device synchronized successfully.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@DeviceStatusActivity, "Device synchronized successfully.", Toast.LENGTH_SHORT).show()
             }
         }
     }

@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:alpha="0.12"
+        android:alpha="0.14"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -22,19 +22,19 @@
         app:layout_constraintVertical_bias="0.65">
 
         <ImageView
-            android:layout_width="160dp"
-            android:layout_height="160dp"
-            android:src="@drawable/ic_rrv_watermark"
-            android:contentDescription="RRV Watermark" />
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:src="@drawable/ic_kubernetes_security_logo"
+            android:contentDescription="Kubernetes Securities Logo" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="RRV MDM"
+            android:layout_marginTop="12dp"
+            android:text="KUBERNETES SECURITIES // ZERO-TRUST"
             android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:letterSpacing="0.2"
+            android:textSize="15sp"
+            android:letterSpacing="0.15"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -47,13 +47,35 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="24dp"
+        android:paddingStart="20dp"
         android:paddingTop="36dp"
-        android:paddingEnd="24dp"
+        android:paddingEnd="20dp"
         android:paddingBottom="12dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Co-branded Logos Container -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginEnd="12dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:background="@drawable/bg_status_pill">
+
+            <!-- Kubernetes Securities Brand Icon -->
+            <ImageView
+                android:id="@+id/ivBrandLogo"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:src="@drawable/ic_kubernetes_security_logo"
+                android:contentDescription="Kubernetes Securities" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="0dp"
@@ -65,18 +87,18 @@
                 android:id="@+id/tvHeaderTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="RRV MDM"
+                android:text="Kubernetes Securities"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvHeaderSubtitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Managed by RRV MDM"
+                android:text="Zero-Trust Enterprise Fleet Defense"
                 android:textColor="#94A3B8"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
         </LinearLayout>
 
         <!-- Notification Bell with Badge -->
@@ -213,7 +235,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="📢"
+            android:text=""
             android:textSize="18sp"
             android:layout_marginEnd="10dp" />
 
@@ -284,7 +306,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🛡️"
+            android:text=""
             android:textSize="44sp" />
 
         <TextView
@@ -327,7 +349,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="RRV MDM"
+            android:text="KUBERNETES SECURITIES"
             android:textColor="#38BDF8"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -347,7 +369,7 @@
             android:id="@+id/tvCommandCardSubtitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="RRV Secure Browser"
+            android:text="Secure Enterprise Browser"
             android:textColor="#94A3B8"
             android:textSize="12sp" />
 
@@ -458,13 +480,13 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="⌃"
+                android:text="^"
                 android:textColor="#64748B"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Bottom Right "Compliant ✓" Badge -->
+        <!-- Bottom Right "Compliant" Badge -->
         <TextView
             android:id="@+id/pillCompliantBadge"
             android:layout_width="wrap_content"
@@ -474,7 +496,7 @@
             android:paddingTop="6dp"
             android:paddingEnd="14dp"
             android:paddingBottom="6dp"
-            android:text="Compliant ✓"
+            android:text="Compliant"
             android:textColor="#10B981"
             android:textSize="11sp"
             android:textStyle="bold"
@@ -484,5 +506,97 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ======================================================== -->
+    <!-- Volume & Brightness HUD Popup Overlay                     -->
+    <!-- ======================================================== -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardVolumeHud"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="28dp"
+        android:layout_marginEnd="28dp"
+        android:layout_marginTop="50dp"
+        android:visibility="gone"
+        tools:visibility="visible"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="24dp"
+        app:cardBackgroundColor="#F00F172A"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:background="@drawable/bg_volume_hud">
+
+            <!-- Header Row: Icon + Title + Percent -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <ImageView
+                    android:id="@+id/ivHudIcon"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:src="@drawable/ic_volume_up"
+                    android:contentDescription="HUD Icon" />
+
+                <TextView
+                    android:id="@+id/tvHudTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:text="Media Volume"
+                    android:textColor="#F8FAFC"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvHudPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="90%"
+                    android:textColor="#38BDF8"
+                    android:textSize="18sp"
+                    android:fontFamily="monospace"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- Progress Bar -->
+            <ProgressBar
+                android:id="@+id/pbHudLevel"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="10dp"
+                android:layout_marginTop="12dp"
+                android:max="100"
+                android:progress="90"
+                android:progressDrawable="@drawable/bg_progress_bar_custom" />
+
+            <!-- Subtitle / Policy Status Badge -->
+            <TextView
+                android:id="@+id/tvHudPolicyStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_gravity="center_horizontal"
+                android:background="@drawable/bg_status_pill"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:text="🔒 Policy Target: 90% (Auto-reverting)"
+                android:textColor="#38BDF8"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

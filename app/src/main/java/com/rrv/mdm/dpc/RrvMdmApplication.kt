@@ -48,7 +48,7 @@ class RrvMdmApplication : Application() {
     @SuppressLint("HardwareIds", "MissingPermission")
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "🚀 Initializing RRV MDM Enterprise Client Subsystems...")
+        Log.i(TAG, "Initializing RRV MDM Enterprise Client Subsystems...")
 
         // 1. Initialize Authoritative Configuration Provider & Database
         serverConfigProvider = ServerConfigurationProvider(this)
@@ -58,8 +58,11 @@ class RrvMdmApplication : Application() {
 
         // 2. Initialize Controllers & Business Logic Services
         deviceManager = DeviceManagementManager(this)
-        policyManager = DpmPolicyManager(this)
-        lockTaskController = LockTaskController(this)
+        if (deviceManager.isDeviceOwner()) {
+            deviceManager.grantDpcRuntimePermissions()
+        }
+        policyManager = deviceManager
+        lockTaskController = deviceManager
         commandProcessor = CommandProcessor(this)
         mqttManager = MdmMqttManager(this)
         apiClient = MdmApiClient(this)
@@ -75,7 +78,7 @@ class RrvMdmApplication : Application() {
         // 3. Ensure Home Launcher binding and baseline security if Device Owner
         if (deviceManager.isDeviceOwner()) {
             deviceManager.setAsDefaultHomeLauncher()
-            policyManager.enforceBaselineSecurity()
+            deviceManager.enforceBaselineSecurity()
             deviceManager.applyPolicy(repository.getActivePolicy())
         }
 
@@ -110,6 +113,12 @@ class RrvMdmApplication : Application() {
                     }
                 }
             }
+        }
+
+        // Proactively fetch latest policy profile from server on application start
+        val devId = repository.deviceId.ifBlank { mqttManager.getEffectiveDeviceId() }
+        if (devId.isNotBlank() && (repository.isEnrolled || deviceManager.isDeviceOwner())) {
+            apiClient.fetchAndApplyPolicy(devId)
         }
 
         if (repository.isEnrolled || deviceManager.isDeviceOwner()) {

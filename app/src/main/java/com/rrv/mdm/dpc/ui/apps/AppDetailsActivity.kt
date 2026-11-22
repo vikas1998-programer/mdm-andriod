@@ -32,6 +32,13 @@ class AppDetailsActivity : AppCompatActivity() {
             binding.ivDetailAppIcon.setImageDrawable(icon)
         } catch (_: Exception) {}
 
+        val dpm = getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as? android.app.admin.DevicePolicyManager
+        val admin = android.content.ComponentName(this, "com.rrv.mdm.dpc.mdm.receiver.MdmDeviceAdminReceiver")
+        try {
+            dpm?.enableSystemApp(admin, packageName)
+            dpm?.setApplicationHidden(admin, packageName, false)
+        } catch (_: Exception) {}
+
         val isInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }
         if (!isInstalled) {
             binding.btnLaunchApp.text = "Not Installed on Device"
@@ -40,11 +47,12 @@ class AppDetailsActivity : AppCompatActivity() {
 
         binding.btnLaunchApp.setOnClickListener {
             val app = application as RrvMdmApplication
-            if (!isInstalled) {
-                Toast.makeText(this, "Cannot launch: $appName is not installed on this device.", Toast.LENGTH_SHORT).show()
-            } else {
-                val launched = app.launchAppUseCase(packageName)
-                if (!launched) {
+            val launched = app.launchAppUseCase(packageName)
+            if (!launched) {
+                val stillInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }
+                if (!stillInstalled) {
+                    Toast.makeText(this, "Cannot launch: $appName is not installed on this device.", Toast.LENGTH_SHORT).show()
+                } else {
                     Toast.makeText(this, "Cannot launch: $appName is restricted by IT policy.", Toast.LENGTH_SHORT).show()
                 }
             }

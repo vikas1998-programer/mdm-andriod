@@ -104,9 +104,9 @@ class MdmClientHubActivity : AppCompatActivity() {
     private fun setupCategoryFilters() {
         val pills = listOf(
             Triple(binding.pillFilterAll, "ALL", "All Apps"),
-            Triple(binding.pillFilterMandatory, "MANDATORY", "⚡ Mandatory"),
-            Triple(binding.pillFilterPrivate, "PRIVATE", "📦 Private APKs"),
-            Triple(binding.pillFilterSystem, "SYSTEM", "📱 System & OEM")
+            Triple(binding.pillFilterMandatory, "MANDATORY", "Mandatory"),
+            Triple(binding.pillFilterPrivate, "PRIVATE", "Private APKs"),
+            Triple(binding.pillFilterSystem, "SYSTEM", "System & OEM")
         )
 
         pills.forEach { (view, category, _) ->
@@ -161,14 +161,14 @@ class MdmClientHubActivity : AppCompatActivity() {
 
     private fun triggerOnDemandSync() {
         val app = application as RrvMdmApplication
-        Toast.makeText(this, "🔄 Synchronizing Zero-Trust Policy...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Synchronizing Zero-Trust Policy...", Toast.LENGTH_SHORT).show()
         val latest = app.repository.getActivePolicy()
         app.policyManager.applyPolicy(latest)
         loadDashboardData(latest)
         loadAppCatalog(latest)
         loadDiagnosticsData()
         app.mqttManager.publishTelemetry()
-        Toast.makeText(this, "🛡️ Synced: ${latest.name}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Synced: ${latest.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun loadDashboardData(policy: PolicyPayload) {
@@ -217,11 +217,11 @@ class MdmClientHubActivity : AppCompatActivity() {
             } ?: AppCompatResources.getDrawable(this, com.rrv.mdm.dpc.R.drawable.ic_mdm_launcher)!!
 
             val sourceTag = if (app.packageName.startsWith("com.sec") || app.packageName.startsWith("com.google.android") || app.packageName.startsWith("com.android")) {
-                "📱 Pre-Installed OEM"
+                "Pre-Installed OEM"
             } else if (app.packageName.startsWith("com.rrv")) {
-                "📦 Private Enterprise APK"
+                "Private Enterprise APK"
             } else {
-                "🛍️ Enterprise App"
+                "Enterprise App"
             }
 
             list.add(
@@ -278,7 +278,7 @@ class MdmClientHubActivity : AppCompatActivity() {
     private fun handleAppAction(item: StoreAppItem) {
         val pm = packageManager
         if (item.installType == "BLOCKED") {
-            Toast.makeText(this, "🚫 '${item.title}' is prohibited & blocked by your IT Administrator.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "'${item.title}' is prohibited & blocked by your IT Administrator.", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -294,7 +294,7 @@ class MdmClientHubActivity : AppCompatActivity() {
             // Enterprise Centralized Governance Notification
             Toast.makeText(
                 this,
-                "🔒 Application installation is controlled centrally by your IT Administrator via the Admin Console.",
+                "Application installation is controlled centrally by your IT Administrator via the Admin Console.",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -316,7 +316,7 @@ class MdmClientHubActivity : AppCompatActivity() {
             app.policyManager.applyPolicy(updated)
             loadDashboardData(updated)
             loadAppCatalog(updated)
-            Toast.makeText(this@MdmClientHubActivity, "🛡️ MDM Policy Updated: ${updated.name}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this@MdmClientHubActivity, "MDM Policy Updated: ${updated.name}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -352,19 +352,19 @@ class StoreAppAdapter(
 
         // Status Badge Styling (Central Admin Controlled)
         if (item.installType == "BLOCKED") {
-            holder.binding.tvStoreAppActionBadge.text = "🚫 Blocked"
+            holder.binding.tvStoreAppActionBadge.text = "Blocked"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
             holder.binding.tvStoreAppActionBadge.setTextColor(0xFFEF4444.toInt())
         } else if (item.isInstalled) {
-            holder.binding.tvStoreAppActionBadge.text = "🚀 Open"
+            holder.binding.tvStoreAppActionBadge.text = "Open"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_btn_open)
             holder.binding.tvStoreAppActionBadge.setTextColor(0xFF38BDF8.toInt())
         } else if (item.installType == "FORCE_INSTALLED" || item.installType == "REQUIRED") {
-            holder.binding.tvStoreAppActionBadge.text = "⚡ Enforced by IT"
+            holder.binding.tvStoreAppActionBadge.text = "Enforced by IT"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
             holder.binding.tvStoreAppActionBadge.setTextColor(0xFF38BDF8.toInt())
         } else {
-            holder.binding.tvStoreAppActionBadge.text = "🔒 IT Managed"
+            holder.binding.tvStoreAppActionBadge.text = "IT Managed"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
             holder.binding.tvStoreAppActionBadge.setTextColor(0xFF94A3B8.toInt())
         }

@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization")
     id("kotlin-kapt")
 }
 
@@ -9,12 +8,42 @@ android {
     namespace = "com.rrv.mdm.dpc"
     compileSdk = 34
 
+    val mdmEnv = (project.findProperty("MDM_ENV") as? String ?: "prod").lowercase()
+    val isDev = mdmEnv == "dev"
+
+    val serverHost = project.findProperty("SERVER_HOST") as? String 
+        ?: (project.findProperty(if (isDev) "DEV_SERVER_HOST" else "PROD_SERVER_HOST") as? String) 
+        ?: if (isDev) "10.0.2.2" else "169.58.239.251"
+
+    val apiPort = (project.findProperty("BACKEND_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_BACKEND_PORT" else "PROD_BACKEND_PORT") as? String)?.toIntOrNull()
+        ?: if (isDev) 8080 else 8088
+
+    val mqttPort = (project.findProperty("MQTT_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_MQTT_PORT" else "PROD_MQTT_PORT") as? String)?.toIntOrNull()
+        ?: 1883
+
+    val mqttTlsPort = (project.findProperty("MQTT_TLS_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_MQTT_TLS_PORT" else "PROD_MQTT_TLS_PORT") as? String)?.toIntOrNull()
+        ?: 8883
+
+    val portalPort = (project.findProperty("PORTAL_PORT") as? String)?.toIntOrNull()
+        ?: (project.findProperty(if (isDev) "DEV_PORTAL_PORT" else "PROD_PORTAL_PORT") as? String)?.toIntOrNull()
+        ?: 4200
+
     defaultConfig {
         applicationId = "com.rrv.mdm.dpc"
         minSdk = 28 // Android 9.0 (Pie) Enterprise baseline
         targetSdk = 34 // Android 14+ / 15
         versionCode = 100
         versionName = "1.0.0-PROD"
+
+        buildConfigField("String", "GLOBAL_SERVER_HOST", "\"$serverHost\"")
+        buildConfigField("int", "GLOBAL_API_PORT", "$apiPort")
+        buildConfigField("int", "GLOBAL_MQTT_PORT", "$mqttPort")
+        buildConfigField("int", "GLOBAL_MQTT_TLS_PORT", "$mqttTlsPort")
+        buildConfigField("int", "GLOBAL_PORTAL_PORT", "$portalPort")
+        buildConfigField("String", "GLOBAL_SERVER_URL", "\"http://$serverHost:$apiPort\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,6 +81,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     testOptions {
@@ -84,7 +114,6 @@ dependencies {
     // Kotlin Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     // Android Lifecycle & ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.4")

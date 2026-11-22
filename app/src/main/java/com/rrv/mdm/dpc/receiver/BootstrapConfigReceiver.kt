@@ -45,7 +45,7 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
 
         when (action) {
             ACTION_FETCH_COMMANDS, ACTION_SYNC_POLICY -> {
-                RrvLog.i(TAG, "⚡ Instant Command & Policy Sync triggered via broadcast")
+                RrvLog.i(TAG, "Instant Command & Policy Sync triggered via broadcast")
                 app.mqttManager.fetchPendingCommandsFromServer()
             }
             ACTION_CONFIGURE_SERVER -> {
@@ -82,10 +82,10 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
                     app.repository.serverUrl = newConfig.apiBaseUrl
                     app.repository.mqttBrokerHost = newConfig.mqtt.host
                     app.repository.mqttPort = newConfig.mqtt.port
-                    RrvLog.i(TAG, "✅ Server configuration dynamically applied from broadcast: $newConfig")
+                    RrvLog.i(TAG, "Server configuration dynamically applied from broadcast: $newConfig")
                     app.mqttManager.reconnect()
                 } else {
-                    RrvLog.e(TAG, "❌ Failed to apply server configuration from broadcast")
+                    RrvLog.e(TAG, "Failed to apply server configuration from broadcast")
                 }
             }
 
@@ -101,7 +101,7 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
                     isDevelopmentOverride = true
                 )
                 configProvider.saveBootstrap(bootstrap)
-                RrvLog.i(TAG, "⚡ Bootstrap parameters saved from broadcast: server=$serverUrl")
+                RrvLog.i(TAG, "Bootstrap parameters saved from broadcast: server=$serverUrl")
 
                 // Trigger immediate enrollment if token is present
                 if (!serverUrl.isNullOrBlank() && !token.isNullOrBlank()) {

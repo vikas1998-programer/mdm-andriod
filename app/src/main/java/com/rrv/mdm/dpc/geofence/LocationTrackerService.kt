@@ -41,7 +41,38 @@ class LocationTrackerService : Service() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         nativeLocationManager = getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
 
-        startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        // Ensure DPC permissions are auto-granted if Device Owner
+        try {
+            val app = applicationContext as? RrvMdmApplication
+            app?.deviceManager?.grantDpcRuntimePermissions()
+        } catch (_: Exception) {}
+
+        val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasCoarseLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val hasLocationPermission = hasFineLocation || hasCoarseLocation
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && hasLocationPermission) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildForegroundNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            }
+        } catch (e: Exception) {
+            RrvLog.w(TAG, "startForeground typed fallback: ${e.message}")
+            try {
+                startForeground(NOTIFICATION_ID, buildForegroundNotification())
+            } catch (err: Exception) {
+                RrvLog.e(TAG, "Failed to start foreground service: ${err.message}", err)
+            }
+        }
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
@@ -54,16 +85,22 @@ class LocationTrackerService : Service() {
             handleNewLocation(location)
         }
 
-        try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                if (loc != null) {
-                    RrvLog.geo("Initial GPS fix obtained: ${loc.latitude}, ${loc.longitude}")
-                    handleNewLocation(loc)
+        if (hasLocationPermission) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                    if (loc != null) {
+                        RrvLog.geo("Initial GPS fix obtained: ${loc.latitude}, ${loc.longitude}")
+                        handleNewLocation(loc)
+                    }
                 }
+            } catch (e: SecurityException) {
+                RrvLog.e(TAG, "Location permission missing for initial fused location fetch", e)
             }
-        } catch (_: Exception) {}
 
-        requestLocationUpdates()
+            requestLocationUpdates()
+        } else {
+            RrvLog.w(TAG, "Location permission missing on service creation — deferred GPS listener registration.")
+        }
     }
 
     private fun requestLocationUpdates() {
@@ -76,7 +113,7 @@ class LocationTrackerService : Service() {
 
         try {
             fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
-            RrvLog.geo("✓ Fused GPS active: 5m displacement threshold, 1s min interval.")
+            RrvLog.geo("Fused GPS active: 5m displacement threshold, 1s min interval.")
         } catch (e: SecurityException) {
             RrvLog.e(TAG, "Location permission missing for FusedLocationProviderClient", e)
         }
@@ -93,7 +130,7 @@ class LocationTrackerService : Service() {
                     }
                 }
             }
-            RrvLog.geo("✓ Hardware GNSS active: 5-meter displacement listener registered.")
+            RrvLog.geo("Hardware GNSS active: 5-meter displacement listener registered.")
         } catch (e: SecurityException) {
             RrvLog.e(TAG, "Location permission missing for native LocationManager", e)
         } catch (e: Exception) {
@@ -117,7 +154,7 @@ class LocationTrackerService : Service() {
             app.repository.lastLatitude = location.latitude
             app.repository.lastLongitude = location.longitude
 
-            RrvLog.geo("📍 5m GPS Trigger: Displaced ${if (lastLoc == null) "Initial" else "${"%.1f".format(distanceMoved)}m"} -> [Lat: ${location.latitude}, Lng: ${location.longitude}, Acc: ±${"%.1f".format(location.accuracy)}m]")
+            RrvLog.geo("5m GPS Trigger: Displaced ${if (lastLoc == null) "Initial" else "${"%.1f".format(distanceMoved)}m"} -> [Lat: ${location.latitude}, Lng: ${location.longitude}, Acc: ±${"%.1f".format(location.accuracy)}m]")
 
             val zones = app.repository.getGeofences()
             if (zones.isNotEmpty()) {
@@ -125,7 +162,7 @@ class LocationTrackerService : Service() {
                     val event = transitionEvaluator.evaluate(location, zone)
                     when (event) {
                         is GeofenceTransitionEvent.BreachExit -> {
-                            RrvLog.w(TAG, "🚨 GEOFENCE BREACH: Device exited zone '${event.zone.name}' (${event.elapsedOutsideMs / 1000}s dwell).")
+                            RrvLog.w(TAG, "GEOFENCE BREACH: Device exited zone '${event.zone.name}' (${event.elapsedOutsideMs / 1000}s dwell).")
                             app.mqttManager.publishSecurityAlert(
                                 "GEOFENCE_EXIT_BREACH",
                                 "Device confirmed outside zone '${event.zone.name}'."
@@ -133,7 +170,7 @@ class LocationTrackerService : Service() {
                             app.policyManager.lockScreenNow()
                         }
                         is GeofenceTransitionEvent.ValidEntry -> {
-                            RrvLog.geo("✓ GEOFENCE ENTRY: Device re-entered '${event.zone.name}'.")
+                            RrvLog.geo("GEOFENCE ENTRY: Device re-entered '${event.zone.name}'.")
                             app.mqttManager.publishSecurityAlert(
                                 "GEOFENCE_ENTER",
                                 "Device confirmed inside zone '${event.zone.name}'."

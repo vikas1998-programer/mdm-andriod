@@ -55,7 +55,7 @@ class ManagedSettingsActivity : AppCompatActivity() {
                 if (entered == "998877" || entered == "123456" || entered == "000000") {
                     startActivity(Intent(this, AdminDiagnosticActivity::class.java))
                 } else {
-                    Toast.makeText(this, "✕ Invalid Administrator PIN.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Invalid Administrator PIN.", Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancel", null)

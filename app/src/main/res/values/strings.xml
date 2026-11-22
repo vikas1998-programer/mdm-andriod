@@ -1,11 +1,11 @@
 <resources>
-    <string name="app_name">RRV MDM Agent</string>
-    <string name="device_admin_label">RRV Enterprise Device Policy Controller</string>
-    <string name="device_admin_description">Enforces hardware zero-trust policies, spatial geofences, and secure enterprise fleet management.</string>
+    <string name="app_name">Kubernetes Securities MDM</string>
+    <string name="device_admin_label">Kubernetes Securities Zero-Trust DPC</string>
+    <string name="device_admin_description">Enforces hardware zero-trust policies, spatial geofences, and secure enterprise fleet management by Kubernetes Securities.</string>
 
     <!-- Kiosk Strings -->
-    <string name="kiosk_header_title">RRV Enterprise Kiosk</string>
-    <string name="kiosk_header_subtitle">Secured Workspace • Hardware Attested</string>
+    <string name="kiosk_header_title">Kubernetes Securities Kiosk</string>
+    <string name="kiosk_header_subtitle">Secured Workspace • Hardware Attested Zero-Trust</string>
     <string name="kiosk_no_apps">No authorized enterprise applications provisioned.</string>
     <string name="kiosk_admin_exit">Exit Kiosk (Admin PIN)</string>
     <string name="kiosk_enter_pin">Enter 6-Digit Master Security PIN</string>
@@ -15,7 +15,14 @@
     <string name="enroll_subtitle">Zero-Touch &amp; QR Code Hardware Onboarding</string>
     <string name="enroll_scan_qr">Scan Provisioning QR Code</string>
     <string name="enroll_manual_btn">Manual Server Provisioning</string>
-    <string name="enroll_server_url_hint">https://mdm.example.com</string>
+    <string name="enroll_server_url_hint">https://mdm.kubernetes-securities.com</string>
     <string name="enroll_token_hint">Organization Enrollment Token</string>
     <string name="enroll_submit_btn">Initiate Device Enrollment</string>
+
+    <!-- General & About Strings -->
+    <string name="about_title">About Kubernetes Securities MDM</string>
+    <string name="about_client_title">Kubernetes Securities Enterprise Client</string>
+    <string name="about_copyright">Kubernetes Securities Pvt Ltd — All Rights Reserved</string>
+    <string name="lock_screen_title">DEVICE LOCKED BY IT ADMINISTRATOR</string>
+    <string name="lock_screen_subtitle">This device is protected by Kubernetes Securities Zero-Trust MDM. Standard user unlock has been restricted.</string>
 </resources>

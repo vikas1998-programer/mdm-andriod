@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Deep Tech Obsidian Container -->
+    <path
+        android:pathData="M22,8 L86,8 A14,14 0 0,1 100,22 L100,86 A14,14 0 0,1 86,100 L22,100 A14,14 0 0,1 8,86 L8,22 A14,14 0 0,1 22,8 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="8"
+                android:startY="8"
+                android:endX="100"
+                android:endY="100"
+                android:type="linear">
+                <item android:color="#FF0B132B" android:offset="0.0"/>
+                <item android:color="#FF030712" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer Glow Rim -->
+    <path
+        android:pathData="M22,8 L86,8 A14,14 0 0,1 100,22 L100,86 A14,14 0 0,1 86,100 L22,100 A14,14 0 0,1 8,86 L8,22 A14,14 0 0,1 22,8 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#66326CE5"/>
+
+    <!-- Outer Kubernetes Heptagonal Helm (7-spoked ship wheel geometry) -->
+    <path
+        android:pathData="M54,16 L83,23 L96,50 L83,77 L54,84 L25,77 L12,50 L25,23 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#326CE5">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="16"
+                android:endX="54"
+                android:endY="84"
+                android:type="linear">
+                <item android:color="#26326CE5" android:offset="0.0"/>
+                <item android:color="#0D0B132B" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 7 Helm Handles / Spoke Nodes -->
+    <path android:pathData="M54,10 L54,18" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M88,20 L81,25" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M102,50 L94,50" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M88,80 L81,75" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M54,90 L54,82" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M20,80 L27,75" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M6,50 L14,50" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+    <path android:pathData="M20,20 L27,25" android:strokeWidth="3" android:strokeColor="#38BDF8" android:strokeLineCap="round"/>
+
+    <!-- Central Security Shield Emblem -->
+    <path
+        android:pathData="M54,28 L72,36 L72,56 C72,67 64,74 54,78 C44,74 36,67 36,56 L36,36 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="28"
+                android:endX="54"
+                android:endY="78"
+                android:type="linear">
+                <item android:color="#FF1D4ED8" android:offset="0.0"/>
+                <item android:color="#FF0F172A" android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Shield Border Highlight -->
+    <path
+        android:pathData="M54,28 L72,36 L72,56 C72,67 64,74 54,78 C44,74 36,67 36,56 L36,36 Z"
+        android:strokeWidth="1.8"
+        android:strokeColor="#38BDF8"/>
+
+    <!-- Central Cyber Security Lock / Keyhole Symbol inside Shield -->
+    <path
+        android:pathData="M50,47 C50,44.8 51.8,43 54,43 C56.2,43 58,44.8 58,47 L58,49 L50,49 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"/>
+    <path
+        android:pathData="M48,49 L60,49 L60,61 L48,61 Z"
+        android:fillColor="#38BDF8"/>
+    <path
+        android:pathData="M54,52 A1.5,1.5 0 1,1 53.9,52 L54,57"
+        android:strokeWidth="1.2"
+        android:strokeColor="#0F172A"
+        android:strokeLineCap="round"/>
+
+</vector>

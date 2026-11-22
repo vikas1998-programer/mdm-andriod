@@ -56,11 +56,26 @@ object RrvLog {
     }
 
     // Contextual Tagged Logging Helpers
-    fun mqtt(message: String) = i("MQTT-TRANSPORT", "📡 $message")
-    fun dpm(message: String) = i("DPM-POLICY", "🛡️ $message")
-    fun geo(message: String) = i("SPATIAL-GEO", "📍 $message")
-    fun kiosk(message: String) = i("KIOSK-LOCK", "🔒 $message")
-    fun boot(message: String) = i("DPC-LIFECYCLE", "⚡ $message")
+    fun net(message: String) = d("REST-NETWORK", message)
+    fun mqtt(message: String) = d("MQTT-TRANSPORT", message)
+    fun dpm(message: String) = i("DPM-POLICY", message)
+    fun geo(message: String) = d("SPATIAL-GEO", message)
+    fun kiosk(message: String) = i("KIOSK-LOCK", message)
+    fun boot(message: String) = i("DPC-LIFECYCLE", message)
+
+    fun json(tag: String, header: String, jsonString: String) {
+        d(tag, "JSON Payload ($header):")
+        if (jsonString.length <= 3000) {
+            d(tag, jsonString)
+        } else {
+            var i = 0
+            while (i < jsonString.length) {
+                val end = Math.min(jsonString.length, i + 3000)
+                d(tag, jsonString.substring(i, end))
+                i += 3000
+            }
+        }
+    }
 
     private fun recordLog(level: String, tag: String, message: String): String {
         val now = System.currentTimeMillis()
@@ -80,7 +95,9 @@ object RrvLog {
 
         try {
             onLogPublished?.invoke(logEntry)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.d(DEFAULT_TAG, "Log publication listener error: ${e.message}")
+        }
 
         return entry
     }

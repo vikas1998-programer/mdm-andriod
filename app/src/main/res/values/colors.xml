@@ -1,20 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_space">#060911</color>
-    <color name="bg_surface">#0B1120</color>
-    <color name="bg_card">#0F172A</color>
-    <color name="bg_card_border">#1E293B</color>
+    <!-- Kubernesis Security — Crimson & Obsidian Brand Anchors -->
+    <color name="brand_primary">#ED0000</color>
+    <color name="brand_primary_hover">#C50000</color>
+    <color name="brand_primary_light">#FF4D4D</color>
+    <color name="brand_primary_glow">#66ED0000</color>
+    <color name="brand_crimson">#ED0000</color>
+    <color name="brand_crimson_dark">#B71C1C</color>
+    <color name="brand_crimson_bg">#1AED0000</color>
 
-    <color name="cyan_primary">#00E5FF</color>
+    <!-- Surface Foundations (Deep Carbon Obsidian) -->
+    <color name="bg_space">#090A0D</color>
+    <color name="bg_surface">#0E1017</color>
+    <color name="bg_surface_elevated">#131620</color>
+    <color name="bg_card">#131620</color>
+    <color name="bg_card_elevated">#1A1E2C</color>
+    <color name="bg_card_border">#22283A</color>
+    <color name="bg_card_border_glow">#33ED0000</color>
+    <color name="bg_modal">#131620</color>
+    <color name="bg_input">#0E1017</color>
+
+    <!-- Cyber & Brand Accents -->
+    <color name="cyan_primary">#0BB4AA</color>
     <color name="cyan_glow">#38BDF8</color>
-    <color name="blue_primary">#2563EB</color>
-    <color name="blue_hover">#3B82F6</color>
+    <color name="cyan_subtle_bg">#1A0BB4AA</color>
+    <color name="blue_primary">#ED0000</color>
+    <color name="blue_hover">#FF2B2B</color>
+    <color name="indigo_accent">#6366F1</color>
+    <color name="purple_accent">#A855F7</color>
 
+    <!-- Semantic Status Indicators -->
     <color name="status_green">#10B981</color>
-    <color name="status_red">#EF4444</color>
+    <color name="status_green_bg">#1A10B981</color>
+    <color name="status_green_border">#4D10B981</color>
+    <color name="status_red">#ED0000</color>
+    <color name="status_red_bg">#1AED0000</color>
+    <color name="status_red_border">#4DED0000</color>
     <color name="status_yellow">#F59E0B</color>
+    <color name="status_yellow_bg">#1AF59E0B</color>
+    <color name="status_yellow_border">#4DF59E0B</color>
 
+    <!-- Typography Hierarchy -->
     <color name="text_main">#F8FAFC</color>
-    <color name="text_secondary">#94A3B8</color>
-    <color name="text_muted">#64748B</color>
+    <color name="text_secondary">#CBD5E1</color>
+    <color name="text_muted">#94A3B8</color>
+    <color name="text_crimson">#FF4D4D</color>
+    <color name="text_cyan">#0BB4AA</color>
+    <color name="text_inverse">#0E1017</color>
 </resources>

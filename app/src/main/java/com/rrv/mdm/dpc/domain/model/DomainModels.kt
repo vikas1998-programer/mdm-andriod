@@ -1,3 +1,4 @@
+
 package com.rrv.mdm.dpc.domain.model
 
 import android.graphics.drawable.Drawable
@@ -10,13 +11,20 @@ enum class ComplianceLevel {
 }
 
 enum class CommandStatus {
+    QUEUED,
+    DISPATCHED,
+    ACKNOWLEDGED,
     PENDING,
     RECEIVED,
     EXECUTING,
+    EXECUTED,
     SUCCESS,
     FAILED,
     CANCELLED,
-    EXPIRED
+    EXPIRED;
+
+    val isTerminal: Boolean
+        get() = this == EXECUTED || this == SUCCESS || this == FAILED || this == CANCELLED || this == EXPIRED
 }
 
 enum class InstallStatus {
