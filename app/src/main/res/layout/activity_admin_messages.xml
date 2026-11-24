@@ -8,16 +8,16 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#1e1b4b">
+        android:background="#fffff0">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Admin Messages"
-            app:titleTextColor="#FFFFFF"
+            app:titleTextColor="#18181b"
             app:navigationIcon="@android:drawable/ic_menu_revert"
-            app:navigationIconTint="#FFFFFF" />
+            app:navigationIconTint="#18181b" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
@@ -39,7 +39,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="No notifications from IT administrator."
-            android:textColor="#94A3B8"
+            android:textColor="#52525b"
             android:textSize="14sp"
             android:padding="32dp"
             android:visibility="gone" />

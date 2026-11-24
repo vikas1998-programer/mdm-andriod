@@ -23,7 +23,7 @@
             android:paddingEnd="8dp"
             android:paddingBottom="2dp"
             android:text="INFO"
-            android:textColor="#38BDF8"
+            android:textColor="#0891b2"
             android:textSize="10sp"
             android:textStyle="bold" />
 
@@ -34,7 +34,7 @@
             android:layout_weight="1"
             android:gravity="end"
             android:text="10:30 AM"
-            android:textColor="#94A3B8"
+            android:textColor="#52525b"
             android:textSize="11sp" />
     </LinearLayout>
 
@@ -44,7 +44,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="Security Reminder"
-        android:textColor="#FFFFFF"
+        android:textColor="#18181b"
         android:textSize="15sp"
         android:textStyle="bold" />
 
@@ -54,7 +54,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="All corporate devices must maintain compliant screen lock passwords."
-        android:textColor="#CBD5E1"
+        android:textColor="#3f3f46"
         android:textSize="13sp" />
 
     <TextView
@@ -63,6 +63,6 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:text="From: IT Administrator"
-        android:textColor="#94A3B8"
+        android:textColor="#52525b"
         android:textSize="11sp" />
 </LinearLayout>

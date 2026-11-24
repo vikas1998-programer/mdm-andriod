@@ -36,7 +36,7 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:text="Force MQTT Telemetry Publish"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:backgroundTint="@color/blue_primary"
             android:layout_marginTop="20dp" />
 
@@ -45,7 +45,7 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:text="Temporary Kiosk Exit (Admin Only)"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:backgroundTint="@color/status_red"
             android:layout_marginTop="12dp" />
 

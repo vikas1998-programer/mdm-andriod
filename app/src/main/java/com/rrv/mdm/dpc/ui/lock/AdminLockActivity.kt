@@ -121,9 +121,15 @@ class AdminLockActivity : AppCompatActivity() {
     private fun showAdminUnlockPinDialog() {
         val app = application as RrvMdmApplication
         val prefs = getSharedPreferences("rrv_admin_lock", Context.MODE_PRIVATE)
-        val storedPin = prefs.getString("admin_unlock_pin", null)
-            ?: app.repository.getActivePolicy().kioskAdminPin.takeIf { it.isNotBlank() }
-            ?: "123456"
+        val storedPin = com.rrv.mdm.dpc.util.EnrollmentGuards.resolveAdminPin(
+            prefs.getString("admin_unlock_pin", null),
+            app.repository.getActivePolicy().kioskAdminPin
+        )
+        if (storedPin == null) {
+            // No built-in PIN: the admin must unlock remotely (UNLOCK_DEVICE) or configure a PIN.
+            Toast.makeText(this, com.rrv.mdm.dpc.util.EnrollmentGuards.NO_ADMIN_PIN_MESSAGE, Toast.LENGTH_LONG).show()
+            return
+        }
 
         val input = EditText(this).apply {
             hint = "Enter Admin Master PIN"
@@ -137,7 +143,7 @@ class AdminLockActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton("Unlock Device") { _, _ ->
                 val entered = input.text.toString().trim()
-                if (entered == storedPin || entered == "992841" || entered == "123456") {
+                if (com.rrv.mdm.dpc.util.EnrollmentGuards.isAdminPinValid(entered, storedPin)) {
                     Toast.makeText(this, "Admin credentials verified. Device unlocked.", Toast.LENGTH_SHORT).show()
                     app.deviceManager.unlockDevice()
                     releaseLockAndFinish()

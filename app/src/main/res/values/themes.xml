@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Kubernesis Zero-Trust Enterprise DPC Theme -->
-    <style name="Theme.RrvMdmDpc" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.RrvMdmDpc" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
-        <item name="colorOnPrimary">@color/text_main</item>
+        <item name="colorOnPrimary">@color/text_inverse</item>
         <item name="colorPrimaryContainer">@color/brand_crimson_bg</item>
         <item name="colorSecondary">@color/cyan_primary</item>
         <item name="colorOnSecondary">@color/text_main</item>
@@ -14,6 +14,8 @@
         <item name="android:windowBackground">@color/bg_space</item>
         <item name="android:statusBarColor">@color/bg_space</item>
         <item name="android:navigationBarColor">@color/bg_space</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
     <style name="Theme.RrvMdmDpc.Kiosk" parent="Theme.RrvMdmDpc">

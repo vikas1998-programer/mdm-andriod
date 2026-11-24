@@ -8,16 +8,16 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#1e1b4b">
+        android:background="#fffff0">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Device Health &amp; Security"
-            app:titleTextColor="#FFFFFF"
+            app:titleTextColor="#18181b"
             app:navigationIcon="@android:drawable/ic_menu_revert"
-            app:navigationIconTint="#FFFFFF" />
+            app:navigationIconTint="#18181b" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.core.widget.NestedScrollView
@@ -43,7 +43,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="COMPLIANCE OVERVIEW"
-                    android:textColor="#38BDF8"
+                    android:textColor="#0891b2"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:letterSpacing="0.1" />
@@ -54,7 +54,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Device is Secure"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -64,7 +64,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
                     android:text="Compliant with Kubernetes Securities Policy"
-                    android:textColor="#CBD5E1"
+                    android:textColor="#3f3f46"
                     android:textSize="13sp" />
 
                 <View
@@ -72,14 +72,14 @@
                     android:layout_height="1dp"
                     android:layout_marginTop="12dp"
                     android:layout_marginBottom="12dp"
-                    android:background="#334155" />
+                    android:background="#d4d4d8" />
 
                 <TextView
                     android:id="@+id/tvDeviceOwnerStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Android Enterprise Device Owner: Active"
-                    android:textColor="#10B981"
+                    android:textColor="#059669"
                     android:textSize="13sp" />
 
                 <TextView
@@ -87,7 +87,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Hardware Keystore Encryption: Enforced"
-                    android:textColor="#10B981"
+                    android:textColor="#059669"
                     android:textSize="13sp" />
 
                 <TextView
@@ -95,7 +95,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Zero-Trust System Restrictions: Applied"
-                    android:textColor="#10B981"
+                    android:textColor="#059669"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -112,7 +112,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="HARDWARE &amp; TELEMETRY"
-                    android:textColor="#38BDF8"
+                    android:textColor="#0891b2"
                     android:textSize="11sp"
                     android:textStyle="bold"
                     android:letterSpacing="0.1" />
@@ -123,7 +123,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="Model: Samsung Galaxy S21 5G (SM-G991B)"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="13sp" />
 
                 <TextView
@@ -132,7 +132,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="OS: Android 15 (API 34)"
-                    android:textColor="#CBD5E1"
+                    android:textColor="#3f3f46"
                     android:textSize="13sp" />
 
                 <TextView
@@ -141,7 +141,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Battery: 100% (Charging)"
-                    android:textColor="#CBD5E1"
+                    android:textColor="#3f3f46"
                     android:textSize="13sp" />
 
                 <TextView
@@ -150,7 +150,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Network: Wi-Fi"
-                    android:textColor="#CBD5E1"
+                    android:textColor="#3f3f46"
                     android:textSize="13sp" />
 
                 <TextView
@@ -159,7 +159,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="Storage: 45.2 GB Free / 128.0 GB Total"
-                    android:textColor="#CBD5E1"
+                    android:textColor="#3f3f46"
                     android:textSize="13sp" />
             </LinearLayout>
 
@@ -169,9 +169,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="24dp"
-                android:backgroundTint="#2563EB"
+                android:backgroundTint="#fffff0"
+        app:strokeColor="#18181b"
+        app:strokeWidth="1dp"
                 android:text="Synchronize with Kubernetes Securities"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textStyle="bold" />
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

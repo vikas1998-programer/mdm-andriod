@@ -69,16 +69,16 @@ class CommandActivity : AppCompatActivity() {
 
                 when (cmd.status) {
                     CommandStatus.SUCCESS -> {
-                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#10B981"))
+                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#059669"))
                     }
                     CommandStatus.EXECUTING -> {
-                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#38BDF8"))
+                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#0891b2"))
                     }
                     CommandStatus.FAILED -> {
                         binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#EF4444"))
                     }
                     else -> {
-                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#94A3B8"))
+                        binding.tvCommandStatusBadge.setTextColor(Color.parseColor("#52525b"))
                     }
                 }
 

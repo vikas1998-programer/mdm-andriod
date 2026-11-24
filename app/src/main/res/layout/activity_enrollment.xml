@@ -100,6 +100,15 @@
                 android:layout_marginTop="6dp"
                 android:layout_marginBottom="24dp" />
 
+            <TextView
+                android:id="@+id/tvEnrollTargetHost"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/cyan_glow"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="8dp" />
+
             <!-- Status Banner -->
             <TextView
                 android:id="@+id/tvEnrollStatus"
@@ -116,7 +125,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="50dp"
                 android:text="@string/enroll_submit_btn"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textStyle="bold"
                 android:backgroundTint="@color/blue_primary" />
 

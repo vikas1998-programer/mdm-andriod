@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#060911"
+    android:background="#fffff0"
     android:fitsSystemWindows="true">
 
     <!-- ======================================================== -->
@@ -20,7 +20,7 @@
         android:paddingEnd="20dp"
         android:paddingTop="16dp"
         android:paddingBottom="12dp"
-        android:background="#0B1120">
+        android:background="#fffff0">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -46,7 +46,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Kubernetes Securities | Workspace"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="16sp"
                     android:fontFamily="sans-serif-black" />
 
@@ -55,7 +55,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="● Zero-Trust Enforced | Device Active"
-                    android:textColor="#38BDF8"
+                    android:textColor="#0891b2"
                     android:textSize="11sp"
                     android:fontFamily="sans-serif-medium" />
             </LinearLayout>
@@ -68,7 +68,7 @@
             android:layout_height="38dp"
             android:background="@drawable/bg_pill_filter"
             android:src="@android:drawable/ic_popup_sync"
-            app:tint="#38BDF8"
+            app:tint="#0891b2"
             android:padding="8dp"
             android:layout_marginEnd="8dp"
             android:contentDescription="Sync MDM Policy" />
@@ -80,7 +80,7 @@
             android:layout_height="38dp"
             android:background="@drawable/bg_pill_filter"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            app:tint="#94A3B8"
+            app:tint="#52525b"
             android:padding="8dp"
             android:contentDescription="Exit to Android Home Screen" />
 
@@ -131,8 +131,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:hint="Search enterprise apps..."
-                    android:textColorHint="#64748B"
-                    android:textColor="#FFFFFF"
+                    android:textColorHint="#52525b"
+                    android:textColor="#18181b"
                     android:textSize="13sp"
                     android:background="@null"
                     android:singleLine="true"
@@ -157,7 +157,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
                         android:text="All Apps"
-                        android:textColor="#0B1120"
+                        android:textColor="#fffff0"
                         android:background="@drawable/bg_pill_filter_active"
                         android:gravity="center"
                         android:paddingStart="14dp"
@@ -171,7 +171,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
                         android:text="Mandatory"
-                        android:textColor="#94A3B8"
+                        android:textColor="#52525b"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
                         android:paddingStart="14dp"
@@ -185,7 +185,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
                         android:text="Private APKs"
-                        android:textColor="#94A3B8"
+                        android:textColor="#52525b"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
                         android:paddingStart="14dp"
@@ -199,7 +199,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="32dp"
                         android:text="System &amp; OEM"
-                        android:textColor="#94A3B8"
+                        android:textColor="#52525b"
                         android:background="@drawable/bg_pill_filter"
                         android:gravity="center"
                         android:paddingStart="14dp"
@@ -237,7 +237,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="No Enterprise Applications Found"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="15sp"
                     android:fontFamily="sans-serif-bold"
                     android:layout_marginTop="8dp" />
@@ -246,7 +246,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Applications published by your IT administrator will appear here."
-                    android:textColor="#94A3B8"
+                    android:textColor="#52525b"
                     android:textSize="12sp"
                     android:gravity="center"
                     android:layout_marginTop="4dp" />
@@ -301,7 +301,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Kubernetes Securities Global"
-                                android:textColor="#FFFFFF"
+                                android:textColor="#18181b"
                                 android:textSize="15sp"
                                 android:fontFamily="sans-serif-bold" />
 
@@ -310,7 +310,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Samsung Galaxy S21 (SM-G991B)"
-                                android:textColor="#94A3B8"
+                                android:textColor="#52525b"
                                 android:textSize="12sp"
                                 android:layout_marginTop="2dp" />
                         </LinearLayout>
@@ -320,7 +320,7 @@
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:background="#1510B981"
+                        android:background="#15059669"
                         android:paddingTop="10dp"
                         android:paddingBottom="10dp"
                         android:paddingStart="14dp"
@@ -347,7 +347,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="● 100% Zero-Trust Compliant"
-                                android:textColor="#10B981"
+                                android:textColor="#059669"
                                 android:textSize="12sp"
                                 android:fontFamily="sans-serif-bold" />
 
@@ -355,7 +355,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="Knox Hardware Attested &amp; Enforced"
-                                android:textColor="#34D399"
+                                android:textColor="#059669"
                                 android:textSize="10sp" />
                         </LinearLayout>
                     </LinearLayout>
@@ -383,7 +383,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="POLICY PROFILE"
-                            android:textColor="#38BDF8"
+                            android:textColor="#0891b2"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-black" />
 
@@ -392,7 +392,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Corporate High-Security"
-                            android:textColor="#FFFFFF"
+                            android:textColor="#18181b"
                             android:textSize="13sp"
                             android:fontFamily="sans-serif-bold"
                             android:layout_marginTop="4dp"
@@ -403,7 +403,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="● Synced &amp; Enforced"
-                            android:textColor="#10B981"
+                            android:textColor="#059669"
                             android:textSize="10sp"
                             android:layout_marginTop="2dp" />
                     </LinearLayout>
@@ -425,7 +425,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="ASSIGNED APPS"
-                            android:textColor="#38BDF8"
+                            android:textColor="#0891b2"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-black" />
 
@@ -434,7 +434,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="0 Apps"
-                            android:textColor="#FFFFFF"
+                            android:textColor="#18181b"
                             android:textSize="13sp"
                             android:fontFamily="sans-serif-bold"
                             android:layout_marginTop="4dp" />
@@ -443,7 +443,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Tap to View ->"
-                            android:textColor="#38BDF8"
+                            android:textColor="#0891b2"
                             android:textSize="10sp"
                             android:layout_marginTop="2dp" />
                     </LinearLayout>
@@ -456,7 +456,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="44dp"
                     android:text="Sync Policy &amp; Telemetry On-Demand"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-bold"
                     android:background="@drawable/bg_btn_open"
@@ -509,7 +509,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="94%"
-                            android:textColor="#10B981"
+                            android:textColor="#059669"
                             android:textSize="20sp"
                             android:fontFamily="sans-serif-black" />
 
@@ -517,7 +517,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="Battery Health"
-                            android:textColor="#94A3B8"
+                            android:textColor="#52525b"
                             android:textSize="10sp" />
                     </LinearLayout>
 
@@ -543,7 +543,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="4.8 GB"
-                            android:textColor="#38BDF8"
+                            android:textColor="#0891b2"
                             android:textSize="20sp"
                             android:fontFamily="sans-serif-black" />
 
@@ -551,7 +551,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="RAM Memory"
-                            android:textColor="#94A3B8"
+                            android:textColor="#52525b"
                             android:textSize="10sp" />
                     </LinearLayout>
                 </LinearLayout>
@@ -569,7 +569,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="ZERO-TRUST SECURITY CHECKLIST"
-                        android:textColor="#38BDF8"
+                        android:textColor="#0891b2"
                         android:textSize="10sp"
                         android:fontFamily="sans-serif-black"
                         android:letterSpacing="0.05"
@@ -594,13 +594,13 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="Hardware Device Encryption"
-                            android:textColor="#FFFFFF"
+                            android:textColor="#18181b"
                             android:textSize="12sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="PASS"
-                            android:textColor="#10B981"
+                            android:textColor="#059669"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-bold" />
                     </LinearLayout>
@@ -624,13 +624,13 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="USB Debugging &amp; Developer Mode"
-                            android:textColor="#FFFFFF"
+                            android:textColor="#18181b"
                             android:textSize="12sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="BLOCKED"
-                            android:textColor="#10B981"
+                            android:textColor="#059669"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-bold" />
                     </LinearLayout>
@@ -654,13 +654,13 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="Knox Hardware Integrity Attestation"
-                            android:textColor="#FFFFFF"
+                            android:textColor="#18181b"
                             android:textSize="12sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="PASS"
-                            android:textColor="#10B981"
+                            android:textColor="#059669"
                             android:textSize="10sp"
                             android:fontFamily="sans-serif-bold" />
                     </LinearLayout>
@@ -673,7 +673,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="44dp"
                     android:text="View Live Audit &amp; Event Logs"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="12sp"
                     android:fontFamily="sans-serif-bold"
                     android:background="@drawable/bg_btn_open" />
@@ -691,7 +691,7 @@
         android:layout_width="match_parent"
         android:layout_height="58dp"
         android:layout_alignParentBottom="true"
-        android:background="#0B1120"
+        android:background="#fffff0"
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
@@ -717,7 +717,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Workspace"
-                android:textColor="#64748B"
+                android:textColor="#52525b"
                 android:textSize="10sp"
                 android:fontFamily="sans-serif-medium"
                 android:layout_marginTop="2dp" />
@@ -745,7 +745,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="App Catalog"
-                android:textColor="#38BDF8"
+                android:textColor="#0891b2"
                 android:textSize="10sp"
                 android:fontFamily="sans-serif-bold"
                 android:layout_marginTop="2dp" />
@@ -773,7 +773,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Diagnostics"
-                android:textColor="#64748B"
+                android:textColor="#52525b"
                 android:textSize="10sp"
                 android:fontFamily="sans-serif-medium"
                 android:layout_marginTop="2dp" />

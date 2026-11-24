@@ -8,16 +8,16 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#1e1b4b">
+        android:background="#fffff0">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Managed Application"
-            app:titleTextColor="#FFFFFF"
+            app:titleTextColor="#18181b"
             app:navigationIcon="@android:drawable/ic_menu_revert"
-            app:navigationIconTint="#FFFFFF" />
+            app:navigationIconTint="#18181b" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
@@ -50,7 +50,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Application Name"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -60,7 +60,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="com.example.app"
-            android:textColor="#94A3B8"
+            android:textColor="#52525b"
             android:textSize="12sp" />
 
         <!-- Info Card -->
@@ -76,7 +76,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="ENTERPRISE POLICY"
-                android:textColor="#38BDF8"
+                android:textColor="#0891b2"
                 android:textSize="11sp"
                 android:textStyle="bold" />
 
@@ -86,7 +86,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="Status: Approved &amp; Managed"
-                android:textColor="#10B981"
+                android:textColor="#059669"
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
@@ -96,7 +96,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="Corporate approved application for enterprise workflow."
-                android:textColor="#CBD5E1"
+                android:textColor="#3f3f46"
                 android:textSize="13sp" />
         </LinearLayout>
 
@@ -106,9 +106,11 @@
             android:layout_width="match_parent"
             android:layout_height="52dp"
             android:layout_marginTop="32dp"
-            android:backgroundTint="#2563EB"
+            android:backgroundTint="#fffff0"
+        app:strokeColor="#18181b"
+        app:strokeWidth="1dp"
             android:text="Open Application"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textStyle="bold" />
     </LinearLayout>
 

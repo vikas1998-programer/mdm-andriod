@@ -42,7 +42,7 @@
         android:layout_marginTop="8dp"
         android:maxLines="1"
         android:ellipsize="end"
-        android:textColor="#F8FAFC"
+        android:textColor="#18181b"
         android:textSize="12sp"
         android:textStyle="bold"
         android:shadowColor="#80000000"

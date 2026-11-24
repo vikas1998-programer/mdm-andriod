@@ -52,7 +52,11 @@ class ManagedSettingsActivity : AppCompatActivity() {
             .setView(input)
             .setPositiveButton("Verify") { _, _ ->
                 val entered = input.text.toString()
-                if (entered == "998877" || entered == "123456" || entered == "000000") {
+                val app = application as com.rrv.mdm.dpc.RrvMdmApplication
+                val configured = com.rrv.mdm.dpc.util.EnrollmentGuards.resolveAdminPin(app.repository.getActivePolicy().kioskAdminPin)
+                if (configured == null) {
+                    Toast.makeText(this, com.rrv.mdm.dpc.util.EnrollmentGuards.NO_ADMIN_PIN_MESSAGE, Toast.LENGTH_LONG).show()
+                } else if (com.rrv.mdm.dpc.util.EnrollmentGuards.isAdminPinValid(entered, configured)) {
                     startActivity(Intent(this, AdminDiagnosticActivity::class.java))
                 } else {
                     Toast.makeText(this, "Invalid Administrator PIN.", Toast.LENGTH_SHORT).show()

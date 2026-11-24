@@ -41,12 +41,39 @@ class AppDetailsActivity : AppCompatActivity() {
 
         val isInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }
         if (!isInstalled) {
-            binding.btnLaunchApp.text = "Not Installed on Device"
-            binding.btnLaunchApp.alpha = 0.6f
+            binding.btnLaunchApp.text = "Install Application"
+            binding.btnLaunchApp.alpha = 1.0f
         }
 
         binding.btnLaunchApp.setOnClickListener {
             val app = application as RrvMdmApplication
+            val isStillInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }
+            if (!isStillInstalled) {
+                val activePolicy = app.repository.getActivePolicy()
+                val appPolicy = activePolicy.applications.find { it.packageName == packageName }
+                val targetDownloadUrl = appPolicy?.downloadUrl.takeIf { !it.isNullOrBlank() }
+                    ?: if (!appPolicy?.appId.isNullOrBlank()) "/api/v1/apps/${appPolicy?.appId}/download" else ""
+
+                if (!targetDownloadUrl.isNullOrBlank() && appPolicy != null) {
+                    Toast.makeText(this, "Downloading & installing $appName...", Toast.LENGTH_SHORT).show()
+                    val cmdId = "autoheal-details-${packageName}-${System.currentTimeMillis()}"
+                    com.rrv.mdm.dpc.worker.ApkDownloadWorker.enqueue(
+                        this,
+                        cmdId,
+                        appPolicy.appId ?: "",
+                        packageName,
+                        appName,
+                        targetDownloadUrl,
+                        appPolicy.sha256 ?: "",
+                        appPolicy.versionCode,
+                        appPolicy.versionName,
+                        appPolicy.managedConfigJson ?: "{}"
+                    )
+                    finish()
+                    return@setOnClickListener
+                }
+            }
+
             val launched = app.launchAppUseCase(packageName)
             if (!launched) {
                 val stillInstalled = try { packageManager.getPackageInfo(packageName, 0); true } catch (_: Exception) { false }

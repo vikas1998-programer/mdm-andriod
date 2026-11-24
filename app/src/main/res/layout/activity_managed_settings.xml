@@ -8,16 +8,16 @@
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#1e1b4b">
+        android:background="#fffff0">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="Managed Settings"
-            app:titleTextColor="#FFFFFF"
+            app:titleTextColor="#18181b"
             app:navigationIcon="@android:drawable/ic_menu_revert"
-            app:navigationIconTint="#FFFFFF" />
+            app:navigationIconTint="#18181b" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <LinearLayout
@@ -44,7 +44,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="MDM Command Activity &amp; Logs"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -52,7 +52,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
-                android:textColor="#94A3B8"
+                android:textColor="#52525b"
                 android:textSize="20sp" />
         </LinearLayout>
 
@@ -74,7 +74,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Device Health &amp; Security Status"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -82,7 +82,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
-                android:textColor="#94A3B8"
+                android:textColor="#52525b"
                 android:textSize="20sp" />
         </LinearLayout>
 
@@ -104,7 +104,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="About Kubernetes Securities MDM Client"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="14sp"
                 android:textStyle="bold" />
 
@@ -112,7 +112,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
-                android:textColor="#94A3B8"
+                android:textColor="#52525b"
                 android:textSize="20sp" />
         </LinearLayout>
 
@@ -134,14 +134,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="IT Administrator Diagnostic Bypass"
-                android:textColor="#CBD5E1"
+                android:textColor="#3f3f46"
                 android:textSize="13sp" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="›"
-                android:textColor="#94A3B8"
+                android:textColor="#52525b"
                 android:textSize="20sp" />
         </LinearLayout>
     </LinearLayout>

@@ -32,7 +32,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="KUBERNETES SECURITIES // ZERO-TRUST"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textSize="15sp"
             android:letterSpacing="0.15"
             android:textStyle="bold" />
@@ -88,7 +88,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Kubernetes Securities"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="17sp"
                 android:textStyle="bold" />
 
@@ -97,7 +97,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Zero-Trust Enterprise Fleet Defense"
-                android:textColor="#94A3B8"
+                android:textColor="#52525b"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -128,7 +128,7 @@
                 android:backgroundTint="#EF4444"
                 android:gravity="center"
                 android:text="1"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="10sp"
                 android:textStyle="bold"
                 android:visibility="gone"
@@ -168,7 +168,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="10:36"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textSize="52sp"
             android:fontFamily="sans-serif-medium"
             android:shadowColor="#80000000"
@@ -182,7 +182,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Wed, Oct 24 • Seattle"
-            android:textColor="#CBD5E1"
+            android:textColor="#3f3f46"
             android:textSize="14sp" />
 
         <!-- Weather Widget Capsule -->
@@ -206,7 +206,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="6dp"
                 android:text="70° Sunny"
-                android:textColor="#FBBF24"
+                android:textColor="#d97706"
                 android:textSize="13sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -250,7 +250,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Admin Message"
-                android:textColor="#FFFFFF"
+                android:textColor="#18181b"
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
@@ -259,7 +259,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Please connect device to Wi-Fi for mandatory synchronization."
-                android:textColor="#CBD5E1"
+                android:textColor="#3f3f46"
                 android:textSize="11sp" />
         </LinearLayout>
 
@@ -269,7 +269,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            app:tint="#94A3B8"
+            app:tint="#52525b"
             android:contentDescription="Dismiss" />
     </LinearLayout>
 
@@ -314,7 +314,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="Device Managed"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -323,7 +323,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="No applications enabled by IT Administrator"
-            android:textColor="#94A3B8"
+            android:textColor="#52525b"
             android:textSize="13sp" />
     </LinearLayout>
 
@@ -350,7 +350,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="KUBERNETES SECURITIES"
-            android:textColor="#38BDF8"
+            android:textColor="#0891b2"
             android:textSize="11sp"
             android:textStyle="bold"
             android:letterSpacing="0.1" />
@@ -361,7 +361,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="Application installation"
-            android:textColor="#FFFFFF"
+            android:textColor="#18181b"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -370,7 +370,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Secure Enterprise Browser"
-            android:textColor="#94A3B8"
+            android:textColor="#52525b"
             android:textSize="12sp" />
 
         <ProgressBar
@@ -389,7 +389,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="Installing application..."
-            android:textColor="#38BDF8"
+            android:textColor="#0891b2"
             android:textSize="11sp" />
     </LinearLayout>
 
@@ -443,7 +443,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Device is secure"
-                    android:textColor="#FFFFFF"
+                    android:textColor="#18181b"
                     android:textSize="11sp"
                     android:textStyle="bold" />
 
@@ -452,7 +452,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Last synced: 10:30 AM"
-                    android:textColor="#94A3B8"
+                    android:textColor="#52525b"
                     android:textSize="9sp" />
             </LinearLayout>
         </LinearLayout>
@@ -473,7 +473,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="• ○"
-                android:textColor="#64748B"
+                android:textColor="#52525b"
                 android:textSize="12sp"
                 android:letterSpacing="0.3" />
 
@@ -481,7 +481,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="^"
-                android:textColor="#64748B"
+                android:textColor="#52525b"
                 android:textSize="14sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -497,7 +497,7 @@
             android:paddingEnd="14dp"
             android:paddingBottom="6dp"
             android:text="Compliant"
-            android:textColor="#10B981"
+            android:textColor="#059669"
             android:textSize="11sp"
             android:textStyle="bold"
             android:clickable="true"
@@ -521,7 +521,7 @@
         tools:visibility="visible"
         app:cardCornerRadius="20dp"
         app:cardElevation="24dp"
-        app:cardBackgroundColor="#F00F172A"
+        app:cardBackgroundColor="#F0fffff0"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -554,7 +554,7 @@
                     android:layout_weight="1"
                     android:layout_marginStart="12dp"
                     android:text="Media Volume"
-                    android:textColor="#F8FAFC"
+                    android:textColor="#18181b"
                     android:textSize="15sp"
                     android:textStyle="bold" />
 
@@ -563,7 +563,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="90%"
-                    android:textColor="#38BDF8"
+                    android:textColor="#0891b2"
                     android:textSize="18sp"
                     android:fontFamily="monospace"
                     android:textStyle="bold" />
@@ -593,7 +593,7 @@
                 android:paddingTop="3dp"
                 android:paddingBottom="3dp"
                 android:text="🔒 Policy Target: 90% (Auto-reverting)"
-                android:textColor="#38BDF8"
+                android:textColor="#0891b2"
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>

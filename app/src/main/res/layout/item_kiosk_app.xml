@@ -32,7 +32,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Enterprise Application"
-        android:textColor="#F1F5F9"
+        android:textColor="#18181b"
         android:textSize="12sp"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"

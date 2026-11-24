@@ -154,14 +154,14 @@ class KioskLauncherActivity : AppCompatActivity() {
         if (!app.repository.isEnrolled) {
             // Not enrolled yet -> Display Enrollment CTA
             binding.tvWatermarkSubtitle.text = "TAP TO ENROLL DEVICE IN RRV MDM"
-            binding.tvWatermarkSubtitle.setTextColor(0xFFF59E0B.toInt()) // Amber warning color
+            binding.tvWatermarkSubtitle.setTextColor(0xFFd97706.toInt()) // Amber warning color
             binding.rvKioskApps.visibility = View.GONE
             binding.layoutWatermark.visibility = View.VISIBLE
             binding.layoutWatermark.alpha = 1.0f
             return
         } else {
             binding.tvWatermarkSubtitle.text = "SECURED ENTERPRISE WORKSPACE"
-            binding.tvWatermarkSubtitle.setTextColor(0x2294A3B8.toInt())
+            binding.tvWatermarkSubtitle.setTextColor(0x2252525b.toInt())
         }
 
         if (!policy.kioskModeEnabled) {
@@ -240,8 +240,10 @@ class KioskLauncherActivity : AppCompatActivity() {
             .setPositiveButton("Authenticate") { _, _ ->
                 val enteredPin = input.text.toString().trim()
                 val activePolicy = (application as RrvMdmApplication).repository.getActivePolicy()
-                val configuredPin = activePolicy.kioskAdminPin.takeIf { it.isNotBlank() } ?: "123456"
-                if (enteredPin == configuredPin || enteredPin == "123456") {
+                val configuredPin = activePolicy.kioskAdminPin
+                if (configuredPin.isBlank()) {
+                    Toast.makeText(this, "No admin PIN is configured by policy. Access denied.", Toast.LENGTH_LONG).show()
+                } else if (com.rrv.mdm.dpc.util.EnrollmentGuards.isKioskPinValid(enteredPin, configuredPin)) {
                     showEmergencyRecoveryDialog()
                 } else {
                     Toast.makeText(this, "Invalid Security PIN", Toast.LENGTH_SHORT).show()

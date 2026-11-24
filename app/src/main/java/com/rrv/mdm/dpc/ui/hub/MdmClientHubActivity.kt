@@ -92,9 +92,9 @@ class MdmClientHubActivity : AppCompatActivity() {
         binding.layoutDiagnostics.visibility = if (tab == "DIAG") View.VISIBLE else View.GONE
 
         // Update nav text colors
-        binding.tvNavLabelAppStore.setTextColor(if (tab == "STORE") 0xFF38BDF8.toInt() else 0xFF64748B.toInt())
-        binding.tvNavLabelHome.setTextColor(if (tab == "HOME") 0xFF38BDF8.toInt() else 0xFF64748B.toInt())
-        binding.tvNavLabelDiagnostics.setTextColor(if (tab == "DIAG") 0xFF38BDF8.toInt() else 0xFF64748B.toInt())
+        binding.tvNavLabelAppStore.setTextColor(if (tab == "STORE") 0xFF0891b2.toInt() else 0xFF52525b.toInt())
+        binding.tvNavLabelHome.setTextColor(if (tab == "HOME") 0xFF0891b2.toInt() else 0xFF52525b.toInt())
+        binding.tvNavLabelDiagnostics.setTextColor(if (tab == "DIAG") 0xFF0891b2.toInt() else 0xFF52525b.toInt())
 
         if (tab == "DIAG") {
             loadDiagnosticsData()
@@ -115,10 +115,10 @@ class MdmClientHubActivity : AppCompatActivity() {
                 pills.forEach { (pView, pCat, _) ->
                     if (pCat == category) {
                         pView.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter_active)
-                        pView.setTextColor(0xFF0B1120.toInt())
+                        pView.setTextColor(0xFF18181b.toInt())
                     } else {
                         pView.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
-                        pView.setTextColor(0xFF94A3B8.toInt())
+                        pView.setTextColor(0xFF52525b.toInt())
                     }
                 }
                 filterAndRenderApps()
@@ -358,15 +358,15 @@ class StoreAppAdapter(
         } else if (item.isInstalled) {
             holder.binding.tvStoreAppActionBadge.text = "Open"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_btn_open)
-            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF38BDF8.toInt())
+            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF0891b2.toInt())
         } else if (item.installType == "FORCE_INSTALLED" || item.installType == "REQUIRED") {
             holder.binding.tvStoreAppActionBadge.text = "Enforced by IT"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
-            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF38BDF8.toInt())
+            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF0891b2.toInt())
         } else {
             holder.binding.tvStoreAppActionBadge.text = "IT Managed"
             holder.binding.tvStoreAppActionBadge.setBackgroundResource(com.rrv.mdm.dpc.R.drawable.bg_pill_filter)
-            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF94A3B8.toInt())
+            holder.binding.tvStoreAppActionBadge.setTextColor(0xFF52525b.toInt())
         }
 
         holder.binding.tvStoreAppActionBadge.setOnClickListener { onActionClick(item) }
