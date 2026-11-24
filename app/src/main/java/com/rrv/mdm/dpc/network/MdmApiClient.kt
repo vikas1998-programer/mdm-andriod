@@ -43,6 +43,12 @@ class MdmApiClient(private val context: Context) {
         val cleanServerUrl = serverUrl.trimEnd('/')
         val endpoint = "$cleanServerUrl/api/v1/android/enroll"
 
+        if (com.rrv.mdm.dpc.util.EnrollmentGuards.isCleartextToRemoteHost(cleanServerUrl)) {
+            RrvLog.w(TAG, "Refusing to send enrollment token over cleartext HTTP to a non-local host")
+            callback(false, "Enrollment requires HTTPS for non-local servers.")
+            return
+        }
+
         val serial = repository.getHardwareSerial() ?: ("DEV-" + android.os.Build.MODEL.replace(" ", "-") + "-" + android.os.Build.ID.take(6))
         val androidId = repository.getAndroidId()
         val imei = repository.getHardwareImei()
@@ -117,7 +123,14 @@ class MdmApiClient(private val context: Context) {
                         repository.deviceJwt = jwt
 
                         // Parse Dynamic Server Configuration returned by Server
-                        val serverConfigMap = respMap["serverConfig"] as? Map<*, *>
+                        val serverConfigMap = (respMap["serverConfig"] as? Map<*, *>)?.takeIf { cfg ->
+                            val cfgUrl = cfg["apiBaseUrl"]?.toString().orEmpty()
+                            val trusted = com.rrv.mdm.dpc.util.EnrollmentGuards.isServerConfigTrusted(cleanServerUrl, cfgUrl)
+                            if (!trusted) {
+                                RrvLog.w(TAG, "Ignoring server-supplied config naming a different host over a non-HTTPS enrollment; keeping enrollment host ${com.rrv.mdm.dpc.util.EnrollmentGuards.hostOf(cleanServerUrl)}")
+                            }
+                            trusted
+                        }
                         if (serverConfigMap != null) {
                             try {
                                 val configJson = gson.toJson(serverConfigMap)
@@ -285,7 +298,7 @@ class MdmApiClient(private val context: Context) {
     }
 
     fun sendHeartbeat(deviceId: String, batteryLevel: Int, isCharging: Boolean) {
-        if (deviceId.isBlank()) return
+        if (deviceId.isBlank() || !repository.isEnrolled) return
         val serverUrl = (configProvider.getApiBaseUrl() ?: repository.serverUrl).trimEnd('/')
         if (serverUrl.isBlank()) return
         val jwt = repository.deviceJwt

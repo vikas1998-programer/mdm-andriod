@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!-- DEBUG ONLY (AND-013): QA may inject dev config via adb. The main manifest keeps this
+             receiver exported=false for release; the receiver code additionally refuses
+             configure/bootstrap/rollback once the device is enrolled. -->
+        <receiver
+            android:name=".receiver.BootstrapConfigReceiver"
+            android:enabled="true"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

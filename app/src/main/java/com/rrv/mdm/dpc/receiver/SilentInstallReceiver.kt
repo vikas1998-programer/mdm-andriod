@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.receiver
 
+import com.rrv.mdm.dpc.util.MqttIdentity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -38,7 +39,7 @@ class SilentInstallReceiver : BroadcastReceiver() {
         when (status) {
             PackageInstaller.STATUS_SUCCESS -> {
                 RrvLog.i(TAG, "Package '$packageName' installed successfully via Device Owner PackageInstaller Session.")
-                val deviceId = repository?.deviceId ?: ""
+                val deviceId = MqttIdentity.canonicalId(repository?.getServerAssignedDeviceId()) ?: ""
                 if (deviceId.isNotBlank() && mqttManager != null) {
                     val topic = "rrv/devices/$deviceId/app_events"
                     val payload = """
@@ -109,7 +110,7 @@ class SilentInstallReceiver : BroadcastReceiver() {
     private fun reportFailure(app: RrvMdmApplication?, commandId: String?, packageName: String, errorReason: String) {
         val mqttManager = app?.mqttManager
         val repository = app?.repository
-        val deviceId = repository?.deviceId
+        val deviceId = MqttIdentity.canonicalId(repository?.getServerAssignedDeviceId())
 
         if (!commandId.isNullOrBlank()) {
             app?.repositoryImpl?.let { repo ->

@@ -7,13 +7,19 @@ import com.rrv.mdm.dpc.RrvMdmApplication
 import com.rrv.mdm.dpc.data.config.BootstrapConfiguration
 import com.rrv.mdm.dpc.data.config.MqttConfiguration
 import com.rrv.mdm.dpc.data.config.ServerConfiguration
+import com.rrv.mdm.dpc.BuildConfig
+import com.rrv.mdm.dpc.util.EnrollmentGuards
 import com.rrv.mdm.dpc.util.RrvLog
 
 /**
  * BroadcastReceiver for dynamic bootstrap and development configuration injection.
  * Enables zero-code-change environment switching across LOCAL, TEST, STAGING, and PRODUCTION.
  *
- * Example ADB Commands:
+ * SECURITY (AND-013): declared exported=false in the main manifest, so release builds are not reachable
+ * from other apps. Only src/debug/AndroidManifest.xml exports it (QA), and even then configuration,
+ * bootstrap and rollback actions are honoured only in debug builds on a device that is NOT enrolled.
+ *
+ * Example ADB Commands (debug build, unenrolled device only):
  *  - Inject Development Bridge:
  *    adb shell am broadcast -a com.rrv.mdm.ACTION_CONFIGURE_SERVER \
  *      --es server_url "http://127.0.0.1:8080" \
@@ -42,6 +48,13 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         val app = context.applicationContext as? RrvMdmApplication ?: return
         val configProvider = app.serverConfigProvider
+
+        val isConfigAction = action == ACTION_CONFIGURE_SERVER || action == ACTION_BOOTSTRAP_ENROLL ||
+            action == ACTION_ROLLBACK_CONFIG
+        if (isConfigAction && !EnrollmentGuards.allowDevBootstrap(BuildConfig.DEBUG, app.repository.isEnrolled)) {
+            RrvLog.w(TAG, "Ignoring $action: dev configuration is only accepted by debug builds before enrolment")
+            return
+        }
 
         when (action) {
             ACTION_FETCH_COMMANDS, ACTION_SYNC_POLICY -> {
@@ -82,7 +95,7 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
                     app.repository.serverUrl = newConfig.apiBaseUrl
                     app.repository.mqttBrokerHost = newConfig.mqtt.host
                     app.repository.mqttPort = newConfig.mqtt.port
-                    RrvLog.i(TAG, "Server configuration dynamically applied from broadcast: $newConfig")
+                    RrvLog.i(TAG, "Server configuration dynamically applied from broadcast: baseUrl=${newConfig.apiBaseUrl}, mqtt=${newConfig.mqtt.host}:${newConfig.mqtt.port}")
                     app.mqttManager.reconnect()
                 } else {
                     RrvLog.e(TAG, "Failed to apply server configuration from broadcast")
@@ -101,7 +114,7 @@ class BootstrapConfigReceiver : BroadcastReceiver() {
                     isDevelopmentOverride = true
                 )
                 configProvider.saveBootstrap(bootstrap)
-                RrvLog.i(TAG, "Bootstrap parameters saved from broadcast: server=$serverUrl")
+                RrvLog.i(TAG, "Bootstrap parameters saved from broadcast: server=$serverUrl, hasToken=${!token.isNullOrBlank()}")
 
                 // Trigger immediate enrollment if token is present
                 if (!serverUrl.isNullOrBlank() && !token.isNullOrBlank()) {

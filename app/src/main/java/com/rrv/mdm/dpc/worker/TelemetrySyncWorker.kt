@@ -18,6 +18,9 @@ class TelemetrySyncWorker(
         Log.i("TelemetrySyncWorker", "Periodic MDM Heartbeat Triggered.")
         val app = applicationContext as RrvMdmApplication
 
+        // Never talk to the server (MQTT, telemetry, heartbeat) before enrolment completes
+        if (!app.repository.isEnrolled) return Result.success()
+
         // Ensure MQTT is connected
         app.mqttManager.connect()
 

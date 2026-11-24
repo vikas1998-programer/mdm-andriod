@@ -133,7 +133,7 @@ class MdmRepository(private val context: Context) {
         set(value) = prefs.edit().putString("KEY_DEVICE_ID", value).apply()
 
     var enrollmentToken: String
-        get() = prefs.getString("KEY_ENROLL_TOKEN", "")?.takeIf { it.isNotBlank() } ?: "RRV-DEMO-2026"
+        get() = prefs.getString("KEY_ENROLL_TOKEN", "")?: ""
         set(value) = prefs.edit().putString("KEY_ENROLL_TOKEN", value).apply()
 
     var isEnrolled: Boolean

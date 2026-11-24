@@ -1427,7 +1427,10 @@ class DeviceManagementManager(private val context: Context) {
                 .putBoolean("is_locked", true)
                 .putString("lock_message", lockMsg)
                 .putString("lock_phone", phone)
-                .putString("admin_unlock_pin", adminPin ?: "123456")
+                .apply {
+                    // Only an admin-supplied PIN is stored; otherwise fall back to the policy PIN at unlock time.
+                    if (adminPin.isNullOrBlank()) remove("admin_unlock_pin") else putString("admin_unlock_pin", adminPin)
+                }
                 .apply()
 
             if (isDeviceOwner()) {

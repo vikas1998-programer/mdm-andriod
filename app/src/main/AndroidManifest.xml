@@ -93,7 +93,7 @@
         <receiver
             android:name=".receiver.BootstrapConfigReceiver"
             android:enabled="true"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.rrv.mdm.ACTION_CONFIGURE_SERVER" />
                 <action android:name="com.rrv.mdm.ACTION_BOOTSTRAP_ENROLL" />

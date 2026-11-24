@@ -117,7 +117,7 @@ class RrvMdmApplication : Application() {
 
         // Proactively fetch latest policy profile from server on application start
         val devId = repository.deviceId.ifBlank { mqttManager.getEffectiveDeviceId() }
-        if (devId.isNotBlank() && (repository.isEnrolled || deviceManager.isDeviceOwner())) {
+        if (devId.isNotBlank() && repository.isEnrolled) {
             apiClient.fetchAndApplyPolicy(devId)
         }
 

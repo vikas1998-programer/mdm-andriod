@@ -135,7 +135,7 @@ class MdmPersistentService : Service() {
         heartbeatJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
                 try {
-                    if (app.repository.isEnrolled || app.deviceManager.isDeviceOwner()) {
+                    if (app.repository.isEnrolled) {
                         if (app.mqttManager.isConnected()) {
                             app.mqttManager.publishTelemetry(null, true)
                         } else {
@@ -166,7 +166,7 @@ class MdmPersistentService : Service() {
             while (isActive) {
                 try {
                     val devId = app.repository.deviceId.ifBlank { app.mqttManager.getEffectiveDeviceId() }
-                    if (!app.mqttManager.isConnected()) {
+                    if (app.repository.isEnrolled && !app.mqttManager.isConnected()) {
                         Log.i(TAG, "[15-Min REST Fallback] MQTT offline — executing 15-minute periodic REST sync for commands and policy...")
                         app.mqttManager.connect()
                         if (devId.isNotBlank()) {

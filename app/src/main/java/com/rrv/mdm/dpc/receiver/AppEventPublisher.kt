@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.receiver
 
+import com.rrv.mdm.dpc.util.MqttIdentity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -117,7 +118,7 @@ class AppEventPublisher : BroadcastReceiver() {
             context.packageManager.getApplicationLabel(info).toString()
         } catch (e: Exception) { packageName }
 
-        val deviceId = repository.deviceId
+        val deviceId = MqttIdentity.canonicalId(repository.getServerAssignedDeviceId()) ?: return
         val topic = "rrv/devices/$deviceId/app_events"
         val payload = """
             {

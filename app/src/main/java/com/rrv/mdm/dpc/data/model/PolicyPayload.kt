@@ -39,7 +39,7 @@ data class PolicyPayload(
 
     // Kiosk Mode Settings
     @SerializedName("kioskModeEnabled") val kioskModeEnabled: Boolean = false,
-    @SerializedName("kioskAdminPin") val kioskAdminPin: String = "123456",
+    @SerializedName("kioskAdminPin") val kioskAdminPin: String = "",
     @SerializedName("allowedKioskPackages") val allowedKioskPackages: List<String> = emptyList(),
 
     // Password & Lockout Governance

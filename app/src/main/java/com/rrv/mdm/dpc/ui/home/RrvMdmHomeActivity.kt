@@ -238,15 +238,15 @@ class RrvMdmHomeActivity : AppCompatActivity() {
 
                         when (status.complianceLevel) {
                             ComplianceLevel.SECURE -> {
-                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#10B981"))
+                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#059669"))
                                 binding.pillCompliantBadge.text = "Compliant"
-                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#10B981"))
+                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#059669"))
                                 binding.pillCompliantBadge.setBackgroundResource(R.drawable.bg_status_badge_green)
                             }
                             ComplianceLevel.WARNING -> {
-                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#F59E0B"))
+                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#d97706"))
                                 binding.pillCompliantBadge.text = "Action Required"
-                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#F59E0B"))
+                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#d97706"))
                             }
                             ComplianceLevel.NON_COMPLIANT -> {
                                 binding.ivSecurityShield.setColorFilter(Color.parseColor("#EF4444"))
@@ -254,9 +254,9 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                                 binding.pillCompliantBadge.setTextColor(Color.parseColor("#EF4444"))
                             }
                             ComplianceLevel.OFFLINE -> {
-                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#94A3B8"))
+                                binding.ivSecurityShield.setColorFilter(Color.parseColor("#52525b"))
                                 binding.pillCompliantBadge.text = "Offline"
-                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#94A3B8"))
+                                binding.pillCompliantBadge.setTextColor(Color.parseColor("#52525b"))
                             }
                         }
                     }
@@ -415,15 +415,15 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         } else if (isReverted && targetPercent != null) {
             ivIcon?.setImageResource(R.drawable.ic_volume_up)
             tvStatus?.text = "✓ Restored to $targetPercent% by Policy"
-            tvStatus?.setTextColor(android.graphics.Color.parseColor("#10B981"))
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#059669"))
         } else if (targetPercent != null) {
             ivIcon?.setImageResource(R.drawable.ic_volume_up)
             tvStatus?.text = "🔒 Policy Target: $targetPercent% (Auto-reverting in 2s)"
-            tvStatus?.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#0891b2"))
         } else {
             ivIcon?.setImageResource(R.drawable.ic_volume_up)
             tvStatus?.text = "✓ User Control Permitted"
-            tvStatus?.setTextColor(android.graphics.Color.parseColor("#94A3B8"))
+            tvStatus?.setTextColor(android.graphics.Color.parseColor("#52525b"))
         }
 
         if (card.visibility != android.view.View.VISIBLE) {
@@ -457,7 +457,7 @@ class RrvMdmHomeActivity : AppCompatActivity() {
         pbLevel?.progress = percent
         ivIcon?.setImageResource(R.drawable.ic_weather_sun)
         tvStatus?.text = "🔒 Managed Display Brightness"
-        tvStatus?.setTextColor(android.graphics.Color.parseColor("#38BDF8"))
+        tvStatus?.setTextColor(android.graphics.Color.parseColor("#0891b2"))
 
         if (card.visibility != android.view.View.VISIBLE) {
             card.alpha = 0f

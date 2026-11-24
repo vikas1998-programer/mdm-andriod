@@ -1,6 +1,7 @@
 package com.rrv.mdm.dpc.network
 
 import android.annotation.SuppressLint
+import com.rrv.mdm.dpc.util.MqttIdentity
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -89,16 +90,20 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     fun publishDeviceLog(entry: RrvLog.DeviceLogEntry) {
         if (!isConnected()) return
         if (entry.tag == "MQTT-TRANSPORT" || entry.tag == "MdmMqttManager") return
-        val deviceId = getEffectiveDeviceId()
-        val topic = "rrv/devices/$deviceId/logs"
+        val topic = MqttIdentity.publishTopic(repository.getServerAssignedDeviceId(), "logs") ?: return
         val payload = gson.toJson(entry)
         publish(topic, payload, 0, false)
     }
 
     fun connect() {
-        val deviceId = getEffectiveDeviceId()
-        if (deviceId.isBlank()) {
-            RrvLog.w(TAG, "Cannot connect MQTT: Device ID is empty.")
+        if (!repository.isEnrolled) {
+            RrvLog.w(TAG, "Cannot connect MQTT: device is not enrolled.")
+            return
+        }
+        // The broker ACL only allows rrv/devices/<username>/..., so the server-issued UUID is the only identity.
+        val deviceId = MqttIdentity.username(repository.getServerAssignedDeviceId())
+        if (deviceId == null) {
+            RrvLog.w(TAG, "Cannot connect MQTT: no server-issued device id yet.")
             return
         }
 
@@ -145,7 +150,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                 RrvLog.d(TAG, "Cannot connect MQTT: Valid server/broker URI is not configured yet (Current: '$serverUri').")
                 return
             }
-            val clientId = "rrv-dpc-$deviceId"
+            val clientId = "rrv-dpc-$deviceId" // deviceId is already the canonical UUID
 
             try {
                 RrvLog.mqtt("Initializing MQTT client: serverUri=$serverUri, clientId=$clientId")
@@ -195,53 +200,19 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         onConnectJob = CoroutineScope(Dispatchers.IO).launch {
             delay(500L) // Ensure Paho internal client state transition completes
             if (!isConnected()) return@launch
-            val effectiveId = getEffectiveDeviceId()
             val imei = getHardwareImei()
             val serial = getHardwareSerial()
-            val androidId = getAndroidId()
-            val serverAssignedId = repository.getServerAssignedDeviceId().takeIf { it.isNotBlank() }
+            val serverId = repository.getServerAssignedDeviceId()
 
-            // 1. Subscribe to Device Command Topics across all alias identifiers
-            val topicsToSubscribe = linkedSetOf<String>()
-            val storedDeviceId = repository.deviceId.takeIf { it.isNotBlank() }
-            if (!storedDeviceId.isNullOrBlank()) {
-                topicsToSubscribe.add("rrv/devices/$storedDeviceId/commands")
-            }
-            if (!serverAssignedId.isNullOrBlank()) {
-                topicsToSubscribe.add("rrv/devices/$serverAssignedId/commands")
-            }
-            if (effectiveId.isNotBlank()) {
-                topicsToSubscribe.add("rrv/devices/$effectiveId/commands")
-            }
-            if (!imei.isNullOrBlank()) {
-                topicsToSubscribe.add("rrv/devices/$imei/commands")
-            }
-            if (!serial.isNullOrBlank()) {
-                topicsToSubscribe.add("rrv/devices/$serial/commands")
-            }
-            if (!androidId.isNullOrBlank()) {
-                topicsToSubscribe.add("rrv/devices/$androidId/commands")
-            }
-            topicsToSubscribe.add("rrv/devices/all/commands")
-            topicsToSubscribe.add("rrv/policies/broadcast/commands")
-
-            for (topic in topicsToSubscribe) {
+            // 1. Subscribe only to the topics the broker ACL allows for the server-issued device id
+            for (topic in MqttIdentity.subscribeTopics(serverId)) {
                 if (!isConnected()) break
                 subscribe(topic, QOS_COMMANDS)
             }
 
-            // 2. Publish Online Status (Retained) across primary and alias topics
+            // 2. Publish Online Status (Retained)
             val onlinePayload = """{"status":"ONLINE","osVersion":"${Build.VERSION.RELEASE}","imei":${imei?.let { "\"$it\"" } ?: "null"},"serial":${serial?.let { "\"$it\"" } ?: "null"},"timestamp":${System.currentTimeMillis()}}"""
-            publish("rrv/devices/$effectiveId/status", onlinePayload, 1, true)
-            if (!serverAssignedId.isNullOrBlank() && serverAssignedId != effectiveId) {
-                publish("rrv/devices/$serverAssignedId/status", onlinePayload, 1, true)
-            }
-            if (!imei.isNullOrBlank() && imei != effectiveId) {
-                publish("rrv/devices/$imei/status", onlinePayload, 1, true)
-            }
-            if (!serial.isNullOrBlank() && serial != effectiveId) {
-                publish("rrv/devices/$serial/status", onlinePayload, 1, true)
-            }
+            MqttIdentity.publishTopic(serverId, "status")?.let { publish(it, onlinePayload, 1, true) }
 
             // 3. Publish Immediate Heartbeat
             publishTelemetry(null, true)
@@ -268,6 +239,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
      * Part of the MQTT Signal + REST Payload Fetch architecture.
      */
     fun fetchPendingCommandsFromServer() {
+        if (!repository.isEnrolled) return
         val serverAssignedId = repository.getServerAssignedDeviceId().takeIf { it.isNotBlank() }
         val effectiveId = getEffectiveDeviceId()
         val idsToFetch = linkedSetOf<String>()
@@ -504,6 +476,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     }
 
     fun publishTelemetry(location: Location? = null, isGeofenceCompliant: Boolean = true) {
+        if (!repository.isEnrolled) return
         val deviceId = getEffectiveDeviceId()
         if (deviceId.isBlank()) return
 
@@ -601,32 +574,16 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         )
 
         val jsonStr = gson.toJson(payload)
-        publish("rrv/devices/$effectiveId/telemetry", jsonStr, QOS_TELEMETRY, false)
-        publish("rrv/devices/$effectiveId/heartbeat", jsonStr, QOS_TELEMETRY, false)
-
-        if (!imei.isNullOrBlank() && imei != effectiveId) {
-            publish("rrv/devices/$imei/telemetry", jsonStr, QOS_TELEMETRY, false)
-            publish("rrv/devices/$imei/heartbeat", jsonStr, QOS_TELEMETRY, false)
-        }
-
-        if (serial.isNotBlank() && serial != "UNKNOWN_SERIAL" && serial != effectiveId) {
-            publish("rrv/devices/$serial/telemetry", jsonStr, QOS_TELEMETRY, false)
-            publish("rrv/devices/$serial/heartbeat", jsonStr, QOS_TELEMETRY, false)
-        }
-
-        val repoDevId = repository.deviceId
-        if (repoDevId.isNotBlank() && repoDevId != effectiveId && repoDevId != imei && repoDevId != serial) {
-            publish("rrv/devices/$repoDevId/telemetry", jsonStr, QOS_TELEMETRY, false)
-            publish("rrv/devices/$repoDevId/heartbeat", jsonStr, QOS_TELEMETRY, false)
-        }
+        val serverId = repository.getServerAssignedDeviceId()
+        MqttIdentity.publishTopic(serverId, "telemetry")?.let { publish(it, jsonStr, QOS_TELEMETRY, false) }
+        MqttIdentity.publishTopic(serverId, "heartbeat")?.let { publish(it, jsonStr, QOS_TELEMETRY, false) }
 
         RrvLog.d(TAG, "Outbound telemetry published: batteryPct=$batteryPct, charging=$isCharging, wifiSsid=$wifiSsid, carrier=$carrierName, imei=$imei, serial=$serial")
     }
 
 
     fun publishAppInventory() {
-        val deviceId = getEffectiveDeviceId()
-        if (deviceId.isBlank()) return
+        val topic = MqttIdentity.publishTopic(repository.getServerAssignedDeviceId(), "app_events") ?: return
 
         try {
             val pm = context.packageManager
@@ -681,7 +638,6 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
                 )
             }
 
-            val topic = "rrv/devices/$deviceId/app_events"
             val chunks = appList.chunked(8)
             CoroutineScope(Dispatchers.IO).launch {
                 for (chunk in chunks) {
@@ -702,18 +658,18 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
     }
 
     fun publishSecurityAlert(alertType: String, message: String) {
-        val deviceId = getEffectiveDeviceId()
-        val topic = "rrv/devices/$deviceId/events"
+        val topic = MqttIdentity.publishTopic(repository.getServerAssignedDeviceId(), "events") ?: return
+        
         val json = """{"alertType":"$alertType","message":"$message","timestamp":${System.currentTimeMillis()}}"""
         publish(topic, json, 1, false)
         RrvLog.w("SECURITY-ALERT", "Security alert dispatched: alertType=$alertType, message=$message")
     }
 
     fun publishCommandAck(commandId: String, status: String, message: String) {
-        val deviceId = getEffectiveDeviceId()
-        val topic = "rrv/devices/$deviceId/acks"
+        val deviceId = repository.getServerAssignedDeviceId()
+        val topic = MqttIdentity.publishTopic(deviceId, "acks")
         val ack = MqttCommandAck(commandId, deviceId, status, message)
-        publish(topic, gson.toJson(ack), 1, false)
+        if (topic != null) publish(topic, gson.toJson(ack), 1, false)
         RrvLog.d(TAG, "Command ACK published: commandId=$commandId, status=$status")
 
         // Dual-ACK via REST to guarantee server status sync
@@ -743,8 +699,7 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
     /** Publish pre-built heartbeat JSON string */
     fun publishHeartbeat(heartbeatJson: String) {
-        val deviceId = getEffectiveDeviceId()
-        val topic = "rrv/devices/$deviceId/heartbeat"
+        val topic = MqttIdentity.publishTopic(repository.getServerAssignedDeviceId(), "heartbeat") ?: return
         publish(topic, heartbeatJson, QOS_TELEMETRY, false)
     }
 
