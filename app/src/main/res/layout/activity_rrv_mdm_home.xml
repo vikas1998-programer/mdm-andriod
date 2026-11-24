@@ -181,35 +181,10 @@
             android:id="@+id/tvClockDate"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Wed, Oct 24 • Seattle"
+            android:text=""
             android:textColor="#3f3f46"
             android:textSize="14sp" />
 
-        <!-- Weather Widget Capsule -->
-        <LinearLayout
-            android:id="@+id/layoutWeatherWidget"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:src="@drawable/ic_weather_sun"
-                android:contentDescription="Weather Sun" />
-
-            <TextView
-                android:id="@+id/tvWeatherText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:text="70° Sunny"
-                android:textColor="#d97706"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-        </LinearLayout>
     </LinearLayout>
 
     <!-- ======================================================== -->
@@ -312,8 +287,9 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:id="@+id/tvEmptyAppsTitle"
             android:layout_marginTop="12dp"
-            android:text="Device Managed"
+            android:text="No applications"
             android:textColor="#18181b"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -321,6 +297,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:id="@+id/tvEmptyAppsSubtitle"
             android:layout_marginTop="4dp"
             android:text="No applications enabled by IT Administrator"
             android:textColor="#52525b"
@@ -451,7 +428,7 @@
                     android:id="@+id/tvSecurityLastSynced"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Last synced: 10:30 AM"
+                    android:text="Last synced: never"
                     android:textColor="#52525b"
                     android:textSize="9sp" />
             </LinearLayout>

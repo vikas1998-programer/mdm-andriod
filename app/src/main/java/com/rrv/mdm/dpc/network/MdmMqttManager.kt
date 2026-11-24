@@ -575,7 +575,8 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
 
         val jsonStr = gson.toJson(payload)
         val serverId = repository.getServerAssignedDeviceId()
-        MqttIdentity.publishTopic(serverId, "telemetry")?.let { publish(it, jsonStr, QOS_TELEMETRY, false) }
+        val telemetrySent = MqttIdentity.publishTopic(serverId, "telemetry")?.let { publish(it, jsonStr, QOS_TELEMETRY, false) } ?: false
+        if (telemetrySent) repository.lastSuccessfulSyncAt = System.currentTimeMillis()
         MqttIdentity.publishTopic(serverId, "heartbeat")?.let { publish(it, jsonStr, QOS_TELEMETRY, false) }
 
         RrvLog.d(TAG, "Outbound telemetry published: batteryPct=$batteryPct, charging=$isCharging, wifiSsid=$wifiSsid, carrier=$carrierName, imei=$imei, serial=$serial")
@@ -725,16 +726,18 @@ class MdmMqttManager(private val context: Context) : MqttCallbackExtended, Serve
         }
     }
 
-    private fun publish(topic: String, payload: String, qos: Int, retained: Boolean) {
-        val client = mqttClient ?: return
-        try {
+    private fun publish(topic: String, payload: String, qos: Int, retained: Boolean): Boolean {
+        val client = mqttClient ?: return false
+        return try {
             val message = MqttMessage(payload.toByteArray(StandardCharsets.UTF_8)).apply {
                 this.qos = qos
                 this.isRetained = retained
             }
             client.publish(topic, message)
+            true
         } catch (e: Exception) {
             android.util.Log.d(TAG, "Publish deferred for topic $topic (${e.message})")
+            false
         }
     }
 

@@ -140,6 +140,11 @@ class MdmRepository(private val context: Context) {
         get() = prefs.getBoolean("KEY_IS_ENROLLED", false) || prefs.getString("KEY_DEVICE_ID", "")?.isNotBlank() == true
         set(value) = prefs.edit().putBoolean("KEY_IS_ENROLLED", value).apply()
 
+    /** Epoch millis of the last telemetry publish the broker accepted; 0 = never synced. */
+    var lastSuccessfulSyncAt: Long
+        get() = prefs.getLong("KEY_LAST_SYNC_AT", 0L)
+        set(value) = prefs.edit().putLong("KEY_LAST_SYNC_AT", value).apply()
+
     fun saveActivePolicy(policy: PolicyPayload) {
         val json = gson.toJson(policy)
         prefs.edit().putString("KEY_ACTIVE_POLICY", json).apply()

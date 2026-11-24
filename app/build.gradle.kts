@@ -8,7 +8,7 @@ android {
     namespace = "com.rrv.mdm.dpc"
     compileSdk = 34
 
-    val mdmEnv = (project.findProperty("MDM_ENV") as? String ?: "prod").lowercase()
+    val mdmEnv = (project.findProperty("MDM_ENV") as? String ?: "dev").lowercase()
     val isDev = mdmEnv == "dev"
 
     val serverHost = project.findProperty("SERVER_HOST") as? String 
@@ -51,6 +51,18 @@ android {
         }
     }
 
+    // AND-009: release signing comes from a real keystore (CI secrets / local properties). With no keystore
+    // configured the release APK stays unsigned instead of silently falling back to the debug key.
+    val releaseStore = (project.findProperty("RELEASE_STORE_FILE") as? String) ?: System.getenv("RELEASE_STORE_FILE")
+    val releaseSigning = if (!releaseStore.isNullOrBlank()) {
+        signingConfigs.create("release") {
+            storeFile = file(releaseStore)
+            storePassword = (project.findProperty("RELEASE_STORE_PASSWORD") as? String) ?: System.getenv("RELEASE_STORE_PASSWORD")
+            keyAlias = (project.findProperty("RELEASE_KEY_ALIAS") as? String) ?: System.getenv("RELEASE_KEY_ALIAS")
+            keyPassword = (project.findProperty("RELEASE_KEY_PASSWORD") as? String) ?: System.getenv("RELEASE_KEY_PASSWORD")
+        }
+    } else null
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -58,7 +70,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = releaseSigning
         }
         debug {
             applicationIdSuffix = ""

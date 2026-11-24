@@ -1,5 +1,6 @@
 package com.rrv.mdm.dpc.ui.device
 
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -34,7 +35,8 @@ class DeviceStatusActivity : AppCompatActivity() {
                 binding.tvStorageStatus.text = "Storage: ${info.storageFreeGb} GB Free / ${info.storageTotalGb} GB Total"
 
                 val isDO = app.deviceManager.isDeviceOwner()
-                binding.tvDeviceOwnerStatus.text = if (isDO) "Android Enterprise Device Owner: Active" else " Device Owner: Not provisioned"
+                binding.tvDeviceOwnerStatus.text = if (isDO) "Android Enterprise Device Owner: Active" else "Device Owner: Not provisioned"
+                bindSecurityChecks(app, isDO)
             }
         }
 
@@ -45,6 +47,28 @@ class DeviceStatusActivity : AppCompatActivity() {
                 app.mqttManager.publishTelemetry(null, true)
                 Toast.makeText(this@DeviceStatusActivity, "Device synchronized successfully.", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    /** Both rows reflect real device state; nothing is claimed that cannot be observed. */
+    private fun bindSecurityChecks(app: RrvMdmApplication, isDeviceOwner: Boolean) {
+        val hasStrongBox = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
+        val hasHardwareKeystore = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_HARDWARE_KEYSTORE)
+        binding.tvKeystoreStatus.text = when {
+            hasStrongBox -> "Hardware keystore: StrongBox available"
+            hasHardwareKeystore -> "Hardware keystore: available"
+            else -> "Hardware keystore: not reported by this device"
+        }
+
+        val restrictionCount = if (isDeviceOwner) {
+            app.deviceManager.activeUserRestrictionCount()
+        } else 0
+        binding.tvRestrictionsStatus.text = when {
+            !isDeviceOwner -> "System restrictions: not applied (not Device Owner)"
+            restrictionCount == 0 -> "System restrictions: none active"
+            else -> "System restrictions: $restrictionCount active"
         }
     }
 }

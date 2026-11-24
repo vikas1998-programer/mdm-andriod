@@ -358,12 +358,8 @@ class WipeDeviceExecutor : CommandExecutor {
 
         RrvLog.w("WipeDeviceExecutor", "Factory reset initiated by IT Administrator.")
 
-        // Report ACK first before wiping hardware storage
-        app.mqttManager.publishCommandAck(command.commandId, "EXECUTED", "Factory reset initiated.")
-
-        // Brief delay to allow MQTT ACK packet to flush over socket
-        kotlinx.coroutines.delay(1000L)
-
+        // No early ACK: the engine acknowledges EXECUTED only after wipeData() was accepted by the system
+        // (the reset itself runs asynchronously), and FAILED if it throws.
         return try {
             dpm.wipeData(0)
             ExecutionResult(true, "Device factory reset triggered.")
@@ -398,7 +394,7 @@ class SetBrightnessExecutor : CommandExecutor {
                 NotificationHelper.showCommandNotification(context, "Screen Brightness", "Screen brightness adjusted to $brightness% by administrator.")
                 return ExecutionResult(true, "Screen brightness set to $brightness%.")
             } else {
-                return ExecutionResult(false, "Failed to set screen brightness: android.permission.WRITE_SETTINGS is required.")
+                return ExecutionResult(false, "Brightness did not change: the system rejected the write (WRITE_SETTINGS missing or a brightness restriction is active).")
             }
         }
         if (!autoOk) {

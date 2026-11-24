@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Global Base Configuration: Permit Cleartext HTTP for MDM Servers & Gateways -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- AND-010: HTTPS only and system CAs only by default. -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
-            <certificates src="user" />
         </trust-anchors>
     </base-config>
 
-    <!-- Debug Overrides -->
+    <!-- TEMPORARY EXCEPTION: the current production gateway has no TLS yet (http://169.58.239.251:8088,
+         MQTT 1883). Remove this block once the server serves HTTPS and pin its certificate. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">169.58.239.251</domain>
+    </domain-config>
+
+    <!-- Debug builds only: user-installed CAs for proxy inspection. -->
     <debug-overrides>
         <trust-anchors>
             <certificates src="system" />

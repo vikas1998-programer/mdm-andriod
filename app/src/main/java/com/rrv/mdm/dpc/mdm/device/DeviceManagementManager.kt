@@ -112,6 +112,11 @@ class DeviceManagementManager(private val context: Context) {
     fun isDeviceOwner(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
     fun isAdminActive(): Boolean = dpm.isAdminActive(adminComponent)
 
+    /** Number of user restrictions currently set by this DPC; 0 when not Device Owner. */
+    fun activeUserRestrictionCount(): Int = try {
+        if (isDeviceOwner()) dpm.getUserRestrictions(adminComponent).keySet().count { dpm.getUserRestrictions(adminComponent).getBoolean(it) } else 0
+    } catch (_: SecurityException) { 0 }
+
     /**
      * Programmatically grant all required runtime permissions for the MDM DPC app.
      */
@@ -1155,8 +1160,16 @@ class DeviceManagementManager(private val context: Context) {
                     brightnessValue
                 )
             }
-            RrvLog.i(TAG, "Screen brightness set to $clamped% (raw $brightnessValue/255).")
-            true
+            val actual = android.provider.Settings.System.getInt(
+                context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, -1
+            )
+            val stuck = actual == brightnessValue
+            if (stuck) {
+                RrvLog.i(TAG, "Screen brightness set to $clamped% (raw $brightnessValue/255).")
+            } else {
+                RrvLog.w(TAG, "Brightness write did not stick: wanted $brightnessValue, system reports $actual.")
+            }
+            stuck
         } catch (e: Exception) {
             RrvLog.w(TAG, "Could not set screen brightness to $percent%: ${e.message}")
             false

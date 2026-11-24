@@ -205,7 +205,8 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                 }
                 launch {
                     viewModel.currentDate.collect { date ->
-                        binding.tvClockDate.text = "$date • Managed"
+                        val enrolled = (application as? RrvMdmApplication)?.repository?.isEnrolled == true
+                        binding.tvClockDate.text = if (enrolled) "$date • Managed" else date
                     }
                 }
 
@@ -221,6 +222,10 @@ class RrvMdmHomeActivity : AppCompatActivity() {
                             adapter.submitList(appList)
                         }
                         if (appList.isEmpty()) {
+                            val enrolled = (application as? RrvMdmApplication)?.repository?.isEnrolled == true
+                            binding.tvEmptyAppsTitle.text = if (enrolled) "Device managed" else "Device not enrolled"
+                            binding.tvEmptyAppsSubtitle.text =
+                                if (enrolled) "No applications enabled by IT Administrator" else "Enroll this device to receive applications"
                             binding.layoutEmptyApps.visibility = View.VISIBLE
                             binding.rvAppGrid.visibility = View.GONE
                         } else {

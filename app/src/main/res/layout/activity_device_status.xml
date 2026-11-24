@@ -78,24 +78,26 @@
                     android:id="@+id/tvDeviceOwnerStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Android Enterprise Device Owner: Active"
-                    android:textColor="#059669"
+                    android:text="Device Owner: checking"
+                    android:textColor="#52525b"
                     android:textSize="13sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Hardware Keystore Encryption: Enforced"
-                    android:textColor="#059669"
+                    android:id="@+id/tvKeystoreStatus"
+                    android:text="Hardware keystore: checking"
+                    android:textColor="#52525b"
                     android:textSize="13sp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="Zero-Trust System Restrictions: Applied"
-                    android:textColor="#059669"
+                    android:id="@+id/tvRestrictionsStatus"
+                    android:text="System restrictions: checking"
+                    android:textColor="#52525b"
                     android:textSize="13sp" />
             </LinearLayout>
 

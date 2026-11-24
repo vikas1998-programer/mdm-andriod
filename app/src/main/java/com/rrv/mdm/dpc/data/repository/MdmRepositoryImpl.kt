@@ -360,8 +360,13 @@ class MdmRepositoryImpl(
             if (raw.startsWith("\"") && raw.endsWith("\"")) raw.drop(1).dropLast(1) else raw
         } catch (_: Exception) { null }
 
-        val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-        val lastSyncFormatted = timeFormat.format(Date())
+        val lastSyncAt = legacyPrefsRepo.lastSuccessfulSyncAt
+        val lastSyncFormatted = when {
+            !isEnrolled -> "not enrolled"
+            lastSyncAt <= 0L -> "never"
+            else -> SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(lastSyncAt))
+        }
+        val transport = currentTransport()
 
         val complianceLevel = when {
             !isEnrolled -> ComplianceLevel.WARNING
@@ -371,14 +376,15 @@ class MdmRepositoryImpl(
 
         val title = when (complianceLevel) {
             ComplianceLevel.SECURE -> "Device is secure"
-            ComplianceLevel.WARNING -> "Action required"
+            ComplianceLevel.WARNING -> if (!isEnrolled) "Not enrolled" else "Action required"
             ComplianceLevel.NON_COMPLIANT -> "Device requires attention"
             ComplianceLevel.OFFLINE -> "Offline"
         }
 
         val subtitle = when (complianceLevel) {
             ComplianceLevel.SECURE -> "Connected to RRV MDM"
-            ComplianceLevel.WARNING -> "Device owner verification pending"
+            ComplianceLevel.WARNING ->
+                if (!isEnrolled) "Enroll this device to start management" else "Device owner verification pending"
             ComplianceLevel.NON_COMPLIANT -> "Policy compliance violations detected"
             ComplianceLevel.OFFLINE -> "Last synchronized: $lastSyncFormatted"
         }
@@ -388,15 +394,28 @@ class MdmRepositoryImpl(
             complianceTitle = title,
             complianceSubtitle = subtitle,
             lastSyncFormatted = lastSyncFormatted,
-            lastSyncTimestamp = System.currentTimeMillis(),
+            lastSyncTimestamp = lastSyncAt,
             batteryLevel = batteryPct,
             isCharging = isCharging,
-            networkType = if (!wifiSsid.isNullOrBlank() && wifiSsid != "<unknown ssid>") "Wi-Fi" else "Cellular",
-            wifiSsid = wifiSsid,
+            networkType = transport,
+            wifiSsid = wifiSsid?.takeIf { it.isNotBlank() && it != "<unknown ssid>" },
             storageFreeGb = freeGb,
             storageTotalGb = totalGb,
             isDeviceOwner = isDeviceOwner,
-            isOnline = true
+            isOnline = transport != "Offline"
         )
+    }
+
+    /** Real transport from ConnectivityManager capabilities; "Offline" when no network is validated. */
+    private fun currentTransport(): String {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            ?: return "Unknown"
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "Offline"
+        return when {
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular"
+            else -> "Other"
+        }
     }
 }
